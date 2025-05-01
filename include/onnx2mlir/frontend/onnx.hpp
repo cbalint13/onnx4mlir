@@ -50,6 +50,8 @@ protected:
 private:
   // parse the graph inputs & outputs
   void parse_graph_inputs_outputs(const onnx::GraphProto &graph_proto);
+  // parse the graph nodes
+  void parse_graph_nodes(const onnx::GraphProto &graph_proto);
 };
 
 /*
