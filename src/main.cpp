@@ -181,6 +181,25 @@ void mlir_onnx_sample() {
   /// create module
   mlir::ModuleOp mod = mlir::ModuleOp::create(builder.getUnknownLoc());
 
+/*
+func.func @main_graph(%arg0: tensor<1x1x129x124xf32> {onnx.name = "input_3"}) -> (tensor<1x8xf32> {onnx.name = "Identity"}) {
+func.func @main_func(%arg0: tensor<1x1x1xf32, {onnx.name = "input"}>, %arg1: tensor<1x1x1xf32>) -> (tensor<1x1x1xf32>, tensor<1x1x1xf32>)
+module {
+  func.func @main_func(%arg0: tensor<1x1x1xf32>, %arg1: tensor<1x1x1xf32>) -> (tensor<1x1x1xf32>, tensor<1x1x1xf32>) {
+    %0 = "onnx.Constant"() <{value = dense<3.330000e+01> : tensor<1x1x1xf32>}> : () -> tensor<1x1x1xf32>
+    %1 = "onnx.Constant"() <{value = dense<3.330000e+01> : tensor<1x1x1xf32>}> : () -> tensor<1x1x1xf32>
+    %2 = "onnx.Add"(%0, %1) : (tensor<1x1x1xf32>, tensor<1x1x1xf32>) -> tensor<1x1x1xf32>
+    return %2, %2 : tensor<1x1x1xf32>, tensor<1x1x1xf32>
+  }
+}
+*/
+
+  // attribute
+  mlir::StringAttr nameKey = builder.getStringAttr("onnx.name");
+  mlir::StringAttr nameVal = builder.getStringAttr("input");
+  mlir::NamedAttribute namedAttr(nameKey, nameVal);
+  mlir::Attribute encodedAttr = builder.getDictionaryAttr(namedAttr);
+
   /// create function
   auto funcType = mlir::FunctionType::get(
       &mlirCtx, // context
@@ -190,7 +209,10 @@ void mlir_onnx_sample() {
        mlir::RankedTensorType::get({1,1,1}, builder.getF32Type())});
       //mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()));
   //auto funcType = mlir::FunctionType::get( &mlirCtx,{},{});
-  mlir::func::FuncOp func = mlir::func::FuncOp::create(builder.getUnknownLoc(), "main_func", funcType, /*attr*/ {});
+  mlir::func::FuncOp func = mlir::func::FuncOp::create(builder.getUnknownLoc(), "main_func", funcType, namedAttr);
+
+  mlir::StringAttr anattr = builder.getStringAttr("input");
+  func.setArgAttr(0, "onnx.name", anattr);
 
   /// add func to module
   mod.push_back(func);
@@ -217,8 +239,8 @@ void mlir_onnx_sample() {
   auto c1 = builder.create<onnx2mlir::dialect::onnx::ConstantOp>(builder.getUnknownLoc(), inputType, inputAttr);
   block->push_back(c1);
 
-
-  auto sum = builder.create<onnx2mlir::dialect::onnx::AddOp>(builder.getUnknownLoc(), mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()), c0, c1);
+//  auto sum = builder.create<onnx2mlir::dialect::onnx::AddOp>(builder.getUnknownLoc(), mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()), c0, c1);
+  auto sum = builder.create<onnx2mlir::dialect::onnx::AddOp>(builder.getUnknownLoc(), mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()), arg1, c1);
   block->push_back(sum);
 
   auto ret = builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc(), mlir::SmallVector<mlir::Value>({static_cast<mlir::Value>(sum), static_cast<mlir::Value>(sum)}));
@@ -244,6 +266,13 @@ void mlir_onnx_sample() {
   flags.elideLargeElementsAttrs(16);
   mod.print(llvm::outs(), flags);
 
+  // TESTS
+  printf("NUMARGAS [%i]\n", func.getNumArguments());
+  mlir::ArrayAttr argAttrs = func.getArgAttrsAttr();
+  argAttrs.print(llvm::outs());
+
+  auto xxx = func.getAllArgAttrs();
+  xxx.print(llvm::outs());
 }
 
 int main(int argc, char **argv) {

@@ -3,6 +3,8 @@
 #include <mlir/IR/AsmState.h>
 #include <mlir/IR/BuiltinTypes.h>
 
+#include "llvm/Support/Casting.h"
+
 #include <onnx/common/version.h>
 #include <onnx/shape_inference/implementation.h>
 #include <onnx/version_converter/convert.h>
@@ -10,6 +12,8 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -302,12 +306,6 @@ onnx_valuetype_to_mlir_type(const onnx::ValueInfoProto &value_proto,
   // builder
   mlir::OpBuilder builder(context);
 
-  // attribute
-  mlir::StringAttr nameKey = builder.getStringAttr("onnx.name");
-  mlir::StringAttr nameVal = builder.getStringAttr(value_proto.name());
-  mlir::NamedAttribute namedAttr(nameKey, nameVal);
-  mlir::Attribute encodedAttr = builder.getDictionaryAttr({namedAttr});
-
   // value data type
   switch (type_proto.value_case()) {
   case onnx::TypeProto::kTensorType: {
@@ -346,7 +344,7 @@ onnx_valuetype_to_mlir_type(const onnx::ValueInfoProto &value_proto,
       std::cout << "ERROR: Tensor has no shape." << std::endl;
       exit(-1);
     }
-    return mlir::RankedTensorType::get(dataShape, elemType, encodedAttr);
+    return mlir::RankedTensorType::get(dataShape, elemType);
   }
   case onnx::TypeProto::kSparseTensorType:
   case onnx::TypeProto::kSequenceType:
@@ -466,21 +464,29 @@ static void parse_graph_node(const onnx::NodeProto &node,
   std::cout << "Node_Name: " << node.name() << std::endl;
 
   std::cout << "Inputs: #" << node.input().size() << std::endl;
+
+  // Op inputs
   for (const auto &input_name : node.input()) {
     std::cout << "    [" << input_name << "]" << std::endl;
   }
+
   std::cout << std::endl;
 
   std::cout << "Outputs: #" << node.output().size() << std::endl;
+
+  // Op outputs
   for (const auto &output_name : node.output()) {
     std::cout << "    [" << output_name << "]" << std::endl;
   }
   std::cout << std::endl;
 
   std::cout << "Attributes: #" << node.attribute().size() << std::endl;
+
+  // Op attributes
   for (const auto &attribute : node.attribute()) {
     parse_node_attributes(attribute, context);
   }
+
   std::cout << "------------------[node end]--------------------" << std::endl;
 }
 
@@ -634,14 +640,83 @@ ONNXImporter::ONNXImporter() {
 void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
   std::cout << std::endl;
 
-  // nodes
+  // i/o map storage
+  std::multimap<std::string, std::shared_ptr<onnx::NodeProto>> node_inputs;
+  std::multimap<std::string, std::shared_ptr<onnx::NodeProto>> node_outputs;
+
   for (const auto &node : graph_proto.node()) {
-    parse_graph_node(node, mlirCtx.get());
+    // parse_graph_node(node, mlirCtx.get());
+    auto node_ptr = std::make_shared<onnx::NodeProto>(node);
+    // map the inputs
+    for (const auto &input_name : node.input()) {
+      if (input_name.size()) {
+        node_inputs.insert({input_name, node_ptr});
+      }
+    }
+    // map the outputs
+    for (const auto &output_name : node.output()) {
+      if (output_name.size()) {
+        node_outputs.insert({output_name, node_ptr});
+      }
+    }
   }
 
-  // initializers
+  // initializers map storage
+  std::map<std::string, std::shared_ptr<onnx::TensorProto>> node_inits;
+
+  // map the initializers
   for (const auto &initializer : graph_proto.initializer()) {
     parse_graph_data(initializer, mlirCtx.get());
+    auto data_ptr = std::make_shared<onnx::TensorProto>(initializer);
+    node_inits.insert({initializer.name(), data_ptr});
+  }
+
+  // get main func
+  auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
+  // add func body
+  auto block = func.addEntryBlock();
+
+  // args storage
+  std::map<std::string, std::shared_ptr<mlir::Value>> func_inputs;
+  std::set<std::string> func_outputs;
+
+  // map func inputs argument
+  for (unsigned int i = 0; i < func.getNumArguments(); i++) {
+    auto arg = block->getArgument(i);
+    auto attr = func.getArgAttrOfType<mlir::StringAttr>(i, "onnx.name");
+    if (attr.size()) {
+      auto arg_ptr = std::make_shared<mlir::Value>(arg);
+      func_inputs.insert({attr.getValue().str(), arg_ptr});
+    }
+  }
+  // map func results argument
+  for (size_t i = 0; i < func.getNumResults(); i++) {
+    auto attr = func.getResultAttrOfType<mlir::StringAttr>(i, "onnx.name");
+    if (attr.size()) {
+      func_outputs.insert(attr.getValue().str());
+    }
+  }
+
+  /*
+   * Build the MLIR graph
+   */
+
+  // add nodes with no inputs
+  for (const auto &node : graph_proto.node()) {
+    if (node.input().size() == 0) {
+      parse_graph_node(node, mlirCtx.get());
+    }
+  }
+
+  // add nodes with main inputs
+  for (const auto &in : func_inputs) {
+    // search node with input
+    for (auto [it, rend] = node_inputs.equal_range(in.first); it != rend;
+         ++it) {
+      auto node = *it->second;
+      //      parse_graph_node(node, mlirCtx.get());
+      // TODO: add this Op to MLIR graph
+    }
   }
 }
 
@@ -649,6 +724,7 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
 
   std::vector<mlir::Type> inputs;
 
+  // main inputs
   std::cout << "Graph Inputs:" << std::endl;
   for (const auto &input : graph_proto.input()) {
     std::cout << "  Name: " << input.name() << std::endl;
@@ -664,6 +740,7 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
 
   std::vector<mlir::Type> outputs;
 
+  // main outputs
   std::cout << "Graph Outputs:" << std::endl;
   for (const auto &output : graph_proto.output()) {
     std::cout << "  Name: " << output.name() << std::endl;
@@ -678,10 +755,24 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
     std::cout << std::endl;
   }
 
+  // mlir graph main function
   mlir::OpBuilder builder(mlirCtx.get());
   auto funcType = mlir::FunctionType::get(mlirCtx.get(), inputs, outputs);
   auto func = mlir::func::FuncOp::create(builder.getUnknownLoc(), "main",
                                          funcType, /*attr*/ {});
+
+  // main function args attribute
+  for (int i = 0; i < graph_proto.input().size(); i++) {
+    auto attr = builder.getStringAttr(graph_proto.input()[i].name());
+    func.setArgAttr(i, "onnx.name", attr);
+  }
+
+  // main function results attribute
+  for (int i = 0; i < graph_proto.output().size(); i++) {
+    auto attr = builder.getStringAttr(graph_proto.output()[i].name());
+    func.setResultAttr(i, "onnx.name", attr);
+  }
+
   module->push_back(func);
 }
 

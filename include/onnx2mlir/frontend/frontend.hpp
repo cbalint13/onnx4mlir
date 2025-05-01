@@ -30,9 +30,9 @@
 #ifndef ONNX2MLIR_FRONTEND_IMPORTER_HPP_
 #define ONNX2MLIR_FRONTEND_IMPORTER_HPP_
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/OwningOpRef.h"
-#include "llvm/Support/raw_ostream.h"
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/OwningOpRef.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <string>
 
