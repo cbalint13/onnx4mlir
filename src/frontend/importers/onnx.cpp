@@ -190,24 +190,6 @@ onnx_typecase_tostr(const onnx::TypeProto::ValueCase value_case) {
   }
 }
 
-template <typename T> static void print_vector(const std::vector<T> &vec) {
-  std::string buffer;
-  llvm::raw_string_ostream os(buffer);
-  const size_t max_elements_to_print = 10;
-  for (size_t i = 0; i < vec.size(); ++i) {
-    buffer.clear();
-    os << vec[i];
-    os.flush();
-    if (i > 0)
-      std::cout << ", ";
-    if (i >= max_elements_to_print) {
-      std::cout << "...";
-      break;
-    }
-    std::cout << os.str();
-  }
-}
-
 template <typename shp_T, typename typ_T>
 static mlir::DenseElementsAttr get_mlir_tensor(const std::string &data,
                                                shp_T shape, typ_T dType) {
@@ -292,7 +274,7 @@ static void onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
           std::cout << ", ";
         }
       }
-    }
+    } break;
     case onnx::TensorProto::UNDEFINED:
     default:
       std::cout << "ERROR: Data read not supported for "
@@ -740,7 +722,7 @@ void ONNXImporter::import(const std::string &filepath) {
    * MLIR ONNX
    */
 
-  // contrust func ins & outs
+  // construct function args
   parse_graph_io(graph_proto);
 
   // pupulate body operators

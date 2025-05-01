@@ -31,9 +31,7 @@ if(MLIR_FOUND)
   message(STATUS "Found LLVM/MLIR version: ${LLVM_VERSION}")
 endif()
 
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wno-unused-but-set-variable")
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-but-set-variable")
 
 #set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 #set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/src)

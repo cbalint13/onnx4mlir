@@ -14,8 +14,9 @@ mlir::LogicalResult ConstantOp::inferReturnTypeComponents(
     mlir::ValueShapeRange operands, mlir::DictionaryAttr attributes,
     mlir::OpaqueProperties properties, mlir::RegionRange regions,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents> &inferredReturnShapes) {
-  mlir::DictionaryAttr dict = mlir::dyn_cast<mlir::DictionaryAttr>(attributes);
-  auto attr = dict.getAs<mlir::StringAttr>("value");
+// TODO: add value attr
+//  mlir::DictionaryAttr dict = mlir::dyn_cast<mlir::DictionaryAttr>(attributes);
+//  auto attr = dict.getAs<mlir::StringAttr>("value");
   //auto type = attr.getType().cast<mlir::TensorType>();
   //inferredReturnShapes.push_back({type.getShape()});
   return mlir::success();
