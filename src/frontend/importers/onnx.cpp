@@ -708,6 +708,13 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
     }
   }
 
+  // add initializers as ConstantOP
+//  for (const auto &node : graph_proto.node()) {
+//    if (node.input().size() == 0) {
+//      parse_graph_node(node, mlirCtx.get());
+//    }
+//  }
+
   // add nodes with main inputs
   for (const auto &in : func_inputs) {
     // search node with input

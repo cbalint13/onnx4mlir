@@ -23,24 +23,15 @@
  *****************************************************************************/
 
 /*!
- * \file OnnxDialect.td
+ * \file Onnx.td
  *
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
-#define ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
+#ifndef ONNX2MLIR_FRONTEND_ONNX_TD_
+#define ONNX2MLIR_FRONTEND_ONNX_TD_
 
-include "mlir/IR/OpBase.td"
+include "onnx2mlir/dialect/onnx/OnnxDialect.td"
+include "onnx2mlir/dialect/onnx/OnnxTypes.td"
+include "onnx2mlir/dialect/onnx/OnnxOps.td"
 
-def Onnx_Dialect : Dialect {
-  let name = "onnx";
-  let summary = "A dialect for ONNX representation";
-  let cppNamespace = "::onnx2mlir::dialect::onnx";
-  let extraClassDeclaration = [{
-    private:
-      void registerOps();
-      void registerTypes();
-    }];
-}
-
-#endif // ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
+#endif // ONNX2MLIR_FRONTEND_ONNX_TD_
