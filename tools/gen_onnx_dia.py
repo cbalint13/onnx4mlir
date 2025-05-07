@@ -3,6 +3,7 @@
 import re
 import sys
 import onnx
+import argparse
 from collections import defaultdict, OrderedDict
 from datetime import datetime
 from onnx import defs
@@ -68,11 +69,22 @@ def get_mlir_types_from_str(type_strs, schema_constraints):
 
 def main():
 
+  parser = argparse.ArgumentParser(
+    description="MLIR ONNX ops generator."
+  )
+
+  parser.add_argument(
+    "output_mlir_ops_inc",
+    help="Path to the MLIR ops file to be generated."
+  )
+
+  args = parser.parse_args()
+
 #  for domain, support_map in build_operator_schemas():
 #    print(domain)
 #  exit(0)
 
-  inc = open("OnnxOps.td.inc", "w")
+  inc = open(args.output_mlir_ops_inc, "w")
   inc.write("/********************************************************\n")
   inc.write(" *   ONNX version [%s]%s*\n" % (onnx.__version__, " " * 30))
   inc.write(" *   Generated at [%s]%s*\n" % (datetime.now(), " " * 10))
