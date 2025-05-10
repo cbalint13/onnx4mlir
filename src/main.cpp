@@ -196,7 +196,7 @@ module {
 
   // attribute
   mlir::StringAttr nameKey = builder.getStringAttr("onnx.name");
-  mlir::StringAttr nameVal = builder.getStringAttr("input");
+  mlir::StringAttr nameVal = builder.getStringAttr("atensor");
   mlir::NamedAttribute namedAttr(nameKey, nameVal);
   mlir::Attribute encodedAttr = builder.getDictionaryAttr(namedAttr);
 
@@ -204,7 +204,7 @@ module {
   auto funcType = mlir::FunctionType::get(
       &mlirCtx, // context
       {mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()), // input
-       mlir::RankedTensorType::get({1,1,1}, builder.getF32Type())},
+       mlir::RankedTensorType::get({1,1,1}, builder.getF32Type(), encodedAttr)},
       {mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()), // output
        mlir::RankedTensorType::get({1,1,1}, builder.getF32Type())});
       //mlir::RankedTensorType::get({1,1,1}, builder.getF32Type()));
@@ -232,8 +232,8 @@ module {
   auto inputType = mlir::RankedTensorType::get({1,1,1}, builder.getF32Type());
   mlir::ElementsAttr inputAttr = mlir::DenseElementsAttr::get(inputType, b0);
 
-
-  auto c0 = builder.create<onnx2mlir::dialect::onnx::ConstantOp>(builder.getUnknownLoc(), inputType, inputAttr);
+/*
+  mlir::Operation* c0 = builder.create<onnx2mlir::dialect::onnx::ConstantOp>(builder.getUnknownLoc(), inputType, inputAttr);
   block->push_back(c0);
 
   auto c1 = builder.create<onnx2mlir::dialect::onnx::ConstantOp>(builder.getUnknownLoc(), inputType, inputAttr);
@@ -245,7 +245,7 @@ module {
 
   auto ret = builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc(), mlir::SmallVector<mlir::Value>({static_cast<mlir::Value>(sum), static_cast<mlir::Value>(sum)}));
   block->push_back(ret);
-
+*/
 
 //  auto ret = builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc(), static_cast<mlir::Value>(sum));
 //  block->push_back(ret);

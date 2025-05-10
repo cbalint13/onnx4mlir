@@ -9,7 +9,7 @@ from datetime import datetime
 from onnx import defs
 
 
-def get_mlir_types_from_str(type_strs, schema_constraints):
+def get_mlir_types_from_str(type_strs, schema_constraints, option = None):
   onnx_to_mlir_types = {
     "(": "<[",
     ")": "]>",
@@ -42,17 +42,16 @@ def get_mlir_types_from_str(type_strs, schema_constraints):
   }
 
   attr_constraints = []
-
   # pick up direct constraint
-  for idx, param in enumerate(type_strs):
-    attr_constraints.append(param.type_str)
-    # pick up matched constraints
-    for attr in schema_constraints:
-      if (attr.type_param_str == param.type_str):
-        attr_constraints = attr.allowed_type_strs
+  attr_constraints.append(type_strs.type_str)
+  # pick up matched constraints
+  for attr in schema_constraints:
+    if (attr.type_param_str == type_strs.type_str):
+      attr_constraints = attr.allowed_type_strs
+      break;
 
+  mlir_types = ""
   # build mlir attributes
-  mlir_types = "AnyTypeOf<[" if (len(attr_constraints) > 1) else ""
   for idx, attr in enumerate(attr_constraints):
 
     if attr.find("optional") == 0:
@@ -62,27 +61,67 @@ def get_mlir_types_from_str(type_strs, schema_constraints):
     pattern = '|'.join(re.escape(key) for key in sorted(onnx_to_mlir_types.keys(), key=len, reverse=True))
     mlir_type_str = re.sub(pattern, lambda m: onnx_to_mlir_types[m.group(0)], attr)
     mlir_types += f"{mlir_type_str}" + (", " if idx+1 < len(attr_constraints) else "")
-  mlir_types += "]>" if (len(attr_constraints) > 1) else ""
+
+  if option == onnx.defs.OpSchema.FormalParameterOption.Optional:
+    mlir_types += ', NoneType'
+
+  if len(attr_constraints) > 1:
+    mlir_types = f"AnyTypeOf<[{mlir_types}]>"
+
+  if option == onnx.defs.OpSchema.FormalParameterOption.Variadic:
+    mlir_types = f"Variadic<{mlir_types}>"
 
   return mlir_types
 
+def get_mlir_attrs_from_str(attr):
+
+  onnx_to_mlir_attrs = {
+    "INT": "SI64Attr",
+    "INTS": "I64ArrayAttr",
+    "FLOAT": "F32Attr",
+    "FLOATS": "F32ArrayAttr",
+    "STRING": "StrAttr",
+    "STRINGS": "StrArrayAttr",
+    "TENSOR": "",
+    "TENSORS": "",
+    "SPARSE_TENSOR": "",
+    "SPARSE_TENSORS": "",
+    "GRAPH": None,
+    "TYPE_PROTO": "TypeAttr",
+    "TYPE_PROTOS": "",
+    "UNDEFINED": "AnyAttr"
+  }
+
+  mlir_attr = onnx_to_mlir_attrs[attr.type.name]
+
+  if mlir_attr is None:
+    return None
+  if not mlir_attr:
+    mlir_attr = "AnyAttr"
+ 
+  default_value = onnx.helper.get_attribute_value(attr.default_value)
+  if default_value:
+    if isinstance(default_value, bytes):
+      default_value = default_value.decode('utf-8')
+    attr_type = "StrAttr" if (mlir_attr == "StrAttr") else "Attr"
+    mlir_attr = f'DefaultValued{attr_type}<{mlir_attr}, "{default_value}">'
+
+  if not attr.required:
+    mlir_attr = f"OptionalAttr<{mlir_attr}>"
+
+  return mlir_attr
 
 def main():
 
   parser = argparse.ArgumentParser(
     description="MLIR ONNX ops generator."
   )
-
   parser.add_argument(
     "output_mlir_ops_inc",
     help="Path to the MLIR ops file to be generated."
   )
 
   args = parser.parse_args()
-
-#  for domain, support_map in build_operator_schemas():
-#    print(domain)
-#  exit(0)
 
   inc = open(args.output_mlir_ops_inc, "w")
   inc.write("/********************************************************\n")
@@ -100,16 +139,21 @@ def main():
   # iterate Ops
   for schema in defs.get_all_schemas_with_history():
 
+#   if schema.name == "Adagrad":
+#   if schema.name == "Constant":
    #if schema.name == "NonMaxSuppression":
-   if (schema.name == "Add") or \
-      (schema.name == "Constant"):
+#   if (schema.name == "Add") or \
+#      (schema.name == "Constant") or \
+#      (schema.name == "Split") or \
+#      (schema.name == "Unsqueeze"):
 
     # use latest version Op
     if schema.since_version != max(ops_versions[schema.name]):
       continue
 
+    # definition
     inc.write(f'\n')
-    inc.write(f'/// {schema.name}\n')
+    inc.write(f'/// {schema.name} [v{schema.since_version}]\n')
     inc.write(f'def Onnx_{schema.name}Op : Onnx_Op<"{schema.name}", []> {{\n')
     inc.write(f'  let summary = "ONNX {schema.name} operation";\n')
     inc.write(f'  let description = [{{\n')
@@ -119,54 +163,36 @@ def main():
     inc.write(f'    {doctxt}\n')
     inc.write(f'  }}];\n')
     inc.write(f'\n')
+
     # arguments
-    mlir_types = get_mlir_types_from_str(schema.inputs, schema.type_constraints)
-    inc.write(f'  let arguments = (ins ')
-    if len(schema.inputs) == 0:
-      inc.write(f'OptionalAttr<AnyAttr>: $value')
-    else:
-      for idx, inp in enumerate(schema.inputs):
-        inc.write(f'{mlir_types}: ${inp.name}%s'
-          % ('' if idx+1 == len(schema.inputs) else ', '))
-    inc.write(');\n')
+    mlir_types_str = "  let arguments = (ins "
+    if len(schema.inputs):
+      for inp in schema.inputs:
+        mlir_types = get_mlir_types_from_str(inp, schema.type_constraints, inp.option)
+        mlir_types_str += f'{mlir_types}:${inp.name},\n' + (' '*23)
+
+    # attributes
+    if len(schema.attributes):
+      for idx, attr in enumerate(sorted(schema.attributes)):
+        mlir_attr = get_mlir_attrs_from_str(schema.attributes[attr])
+        if mlir_attr is not None:
+          mlir_types_str += f'{mlir_attr}:${attr},\n' + (' '*23)
+
+    # trim last comma
+    if len(mlir_types_str):
+      mlir_types_str = mlir_types_str[:mlir_types_str.rfind(',')]
+    inc.write(f'{mlir_types_str});\n')
+
     # results
-    mlir_types = get_mlir_types_from_str(schema.outputs, schema.type_constraints)
-    inc.write(f'  let results = (outs ')
+    mlir_types_str = "  let results = (outs "
     for idx, out in enumerate(schema.outputs):
-      inc.write(f'{mlir_types}: ${out.name}%s'
-        % ('' if idx+1 == len(schema.outputs) else ', '))
-    inc.write(');\n')
+      mlir_types = get_mlir_types_from_str(out, schema.type_constraints)
+      mlir_types_str += f'{mlir_types}:${out.name},%s' \
+        % (('\n'+' '*21 if idx+1 != len(schema.outputs) else ''))
+    mlir_types_str = mlir_types_str[:-1] if mlir_types_str[-1] == ',' else mlir_types_str
+    inc.write(f'{mlir_types_str});\n')
+
     inc.write(f'}}\n')
-
-
-# /// Constant
-# def Onnx_ConstantOp : Onnx_Op<"Constant", [ConstantLike]> {
-#   let summary = "ONNX Constant operation";
-#   let description = [{
-#     This operator produces a constant tensor. Exactly one of the provided attributes, either value, sparse_value,
-#     or value_* must be specified.
-#   }];
-# 
-#   let arguments = (ins ElementsAttr : $value);
-#   let results = (outs AnyStaticShapeTensor : $result);
-# }
-
-# DBG [][SupportType.COMMON][Constant]
-#    ATTR [{'value': OpSchema.Attribute(
-#                      name='value', type=<AttrType.TENSOR: 4>,
-#                      description='The value for the elements of the output tensor.',
-#                      default_value=,
-#                      required=True)}]
-#    DOC [A constant tensor.]
-#    OUT#0 [OpSchema.FormalParameter(
-#                      name='output',
-#                      type_str='T',
-#                      description='Output tensor containing the same value of the provided tensor.',
-#                      param_option=<FormalParameterOption.Single: 0>,
-#                      is_homogeneous=True,
-#                      min_arity=1,
-#                      differentiation_category=<DifferentiationCategory.Unknown: 0>)]
-
 
     print("\n====================[%s]=======================\n" % schema.name)
 #    print(dir(schema.outputs))
