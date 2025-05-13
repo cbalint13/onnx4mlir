@@ -235,7 +235,6 @@ onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
                          const mlir::Attribute &eAttr = {}) {
   std::cout << "      Tensor Name: " << tensor.name() << std::endl;
 
-  mlir::ElementsAttr denseAttrs;
   auto dType = onnx_datatype_to_mlir_type(tensor.data_type(), context);
 
   if (tensor.has_raw_data()) {
@@ -254,9 +253,7 @@ onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
     case onnx::TensorProto::UINT16:
     case onnx::TensorProto::UINT32:
     case onnx::TensorProto::UINT64:
-      denseAttrs =
-          get_mlir_tensor(tensor.raw_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.raw_data(), tensor.dims(), dType, eAttr);
     default:
       std::cout << "ERROR: Raw data read not supported for "
                 << onnx_datatype_tostr(tensor.data_type()) << std::endl;
@@ -265,13 +262,9 @@ onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
   } else {
     switch (tensor.data_type()) {
     case onnx::TensorProto::FLOAT:
-      denseAttrs =
-          get_mlir_tensor(tensor.float_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.float_data(), tensor.dims(), dType, eAttr);
     case onnx::TensorProto::DOUBLE:
-      denseAttrs =
-          get_mlir_tensor(tensor.double_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.double_data(), tensor.dims(), dType, eAttr);
     case onnx::TensorProto::BOOL:
     case onnx::TensorProto::INT4:
     case onnx::TensorProto::INT8:
@@ -280,18 +273,12 @@ onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
     case onnx::TensorProto::UINT4:
     case onnx::TensorProto::UINT8:
     case onnx::TensorProto::UINT16:
-      denseAttrs =
-          get_mlir_tensor(tensor.int32_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.int32_data(), tensor.dims(), dType, eAttr);
     case onnx::TensorProto::INT64:
-      denseAttrs =
-          get_mlir_tensor(tensor.int64_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.int64_data(), tensor.dims(), dType, eAttr);
     case onnx::TensorProto::UINT32:
     case onnx::TensorProto::UINT64:
-      denseAttrs =
-          get_mlir_tensor(tensor.uint64_data(), tensor.dims(), dType, eAttr);
-      break;
+      return get_mlir_tensor(tensor.uint64_data(), tensor.dims(), dType, eAttr);
     case onnx::TensorProto::STRING: {
       const auto &data = tensor.string_data();
       for (int i = 0; i < data.size(); ++i) {
@@ -312,7 +299,7 @@ onnx_tensorproto_to_mlir(const onnx::TensorProto &tensor,
   llvm::outs() << "      Type: " << onnx_datatype_tostr(tensor.data_type())
                << "\n";
 
-  return denseAttrs;
+  return nullptr;
 }
 
 static mlir::Type
@@ -379,28 +366,20 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
 
   mlir::OpBuilder builder(context);
 
-  mlir::StringAttr strAttr;
-  mlir::ElementsAttr denseAttr;
-
   switch (attribute.type()) {
   case onnx::AttributeProto::FLOAT:
-    denseAttr = get_mlir_tensor(std::vector<float>({attribute.f()}),
-                                llvm::ArrayRef<long int>({1}),
-                                mlir::Float32Type::get(context), eAttr);
-    break;
+    std::cout << "    Value: \"" << attribute.f() << "\"" << std::endl;
+    return mlir::FloatAttr::get(mlir::Float32Type::get(context), attribute.f());
   case onnx::AttributeProto::INT:
-    denseAttr = get_mlir_tensor(std::vector<long int>({attribute.i()}),
-                                llvm::ArrayRef<long int>({1}),
-                                mlir::IntegerType::get(context, 64), eAttr);
-    break;
+    std::cout << "    Value: \"" << attribute.i() << "\"" << std::endl;
+    return mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64),
+                                  attribute.i());
   case onnx::AttributeProto::STRING:
     std::cout << "    Value: \"" << attribute.s() << "\"" << std::endl;
-    strAttr = mlir::StringAttr::get(context, attribute.s());
-    break;
+    return mlir::StringAttr::get(context, attribute.s());
   case onnx::AttributeProto::TENSOR:
     std::cout << "    Value (Tensor):" << std::endl;
-    denseAttr = onnx_tensorproto_to_mlir(attribute.t(), context, eAttr);
-    break;
+    return onnx_tensorproto_to_mlir(attribute.t(), context, eAttr);
   case onnx::AttributeProto::GRAPH:
     std::cout
         << "    Value (Graph): (Graph details not printed in this function)"
@@ -408,15 +387,13 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
     std::cout << "ERROR: Parsing of this type is not implemented." << std::endl;
     exit(-1);
   case onnx::AttributeProto::FLOATS:
-    denseAttr = get_mlir_tensor(
-        attribute.floats(), llvm::ArrayRef<long int>({attribute.floats_size()}),
-        mlir::Float32Type::get(context), eAttr);
-    break;
+    return get_mlir_tensor(attribute.floats(),
+                           llvm::ArrayRef<long int>({attribute.floats_size()}),
+                           mlir::Float32Type::get(context), eAttr);
   case onnx::AttributeProto::INTS:
-    denseAttr = get_mlir_tensor(
-        attribute.ints(), llvm::ArrayRef<long int>({attribute.ints_size()}),
-        mlir::IntegerType::get(context, 64), eAttr);
-    break;
+    return get_mlir_tensor(attribute.ints(),
+                           llvm::ArrayRef<long int>({attribute.ints_size()}),
+                           mlir::IntegerType::get(context, 64), eAttr);
   case onnx::AttributeProto::STRINGS:
     std::cout << "    Value (Strings): [";
     for (int i = 0; i < attribute.strings_size(); ++i) {
@@ -470,21 +447,6 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
     exit(-1);
   }
 
-  if (denseAttr) {
-    mlir::OpPrintingFlags flags;
-    flags.elideLargeElementsAttrs(16);
-    llvm::outs() << "      Data: ";
-    mlir::AsmState state(context, flags);
-    denseAttr.print(llvm::outs(), state);
-    llvm::outs() << "\n";
-    llvm::outs().flush();
-  }
-
-  if (denseAttr)
-    return denseAttr;
-  else if (strAttr)
-    return strAttr;
-
   return nullptr;
 }
 
@@ -517,7 +479,15 @@ static void print_graph_node(const onnx::NodeProto &node,
 
   // Op attributes
   for (const auto &attribute : node.attribute()) {
-    get_node_attribute(attribute, context);
+    auto attr = get_node_attribute(attribute, context);
+    // DEBUG
+    mlir::OpPrintingFlags flags;
+    flags.elideLargeElementsAttrs(16);
+    llvm::outs() << "      Data: ";
+    mlir::AsmState state(context, flags);
+    attr.print(llvm::outs(), state);
+    llvm::outs() << "\n";
+    llvm::outs().flush();
   }
 
   std::cout << "------------------[node end]--------------------" << std::endl;
