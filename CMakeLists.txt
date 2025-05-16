@@ -7,6 +7,7 @@ if(ONNX_FOUND)
   message(STATUS "Found ONNX version: ${ONNX_VERSION}")
 endif()
 
+# hardcode for tests
 set(LLVM_CONFIG "llvm-config-21" CACHE STRING "Build with LLVM set to specific llvm-config path")
 
 # use llvm config
@@ -33,23 +34,16 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-but-set-variable -Wno-unused-function")
 
-#set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
-#set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/src)
-#set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
-
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
-#include(HandleLLVMOptions)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
-#link_directories(${LLVM_BUILD_LIBRARY_DIR})
-#link_directories(${PROJECT_BINARY_DIR}/src)
 add_definitions(${LLVM_DEFINITIONS})
 
 

@@ -1,24 +1,47 @@
+/******************************************************************************
+ *
+ * ONNX2MLIR (ONNX dialect mappings for composable optimizations)
+ *
+ * Authors:
+ *     Cristian Balint <cristian dot balint at gmail dot com>
+ *
+ * Copyright (c) 2021,2025
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *****************************************************************************/
+
+/*!
+ * \file src/frontend/importers/onnx.cpp
+ *
+ */
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/AsmState.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Verifier.h>
 
-#include "llvm/Support/Casting.h"
-
-#include "onnx/common/constants.h"
+#include <onnx/common/constants.h>
 #include <onnx/common/version.h>
 #include <onnx/defs/operator_sets.h>
 #include <onnx/defs/schema.h>
 #include <onnx/shape_inference/implementation.h>
 #include <onnx/version_converter/convert.h>
 
-#include <any>
 #include <cstdio>
 #include <fstream>
-#include <iostream>
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -199,6 +222,7 @@ onnx_typecase_tostr(const onnx::TypeProto::ValueCase value_case) {
     return "UNKNOWN_TYPE_CASE";
   }
 }
+
 template <typename shp_T, typename typ_T>
 static mlir::DenseElementsAttr
 get_mlir_tensor(const std::string &data, shp_T shape, typ_T dType,
@@ -801,18 +825,6 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
         continue;
       }
     }
-    /*
-        // erase unused inputs
-        for (int idx = 0; idx < getOnnxOpNumOperands(node.op_type()); ++idx) {
-          if (node.input().size() >= idx) {
-            printf("DBG inputs erase [%i][%i] op[%i]\n", node.input().size(),
-       idx, node_op->getNumOperands()); node_op->eraseOperand(idx); continue;
-          }
-          if (node.input()[idx].size() == 0) {
-            node_op->eraseOperand(idx);
-          }
-        }
-    */
   }
 
   // map func outputs
@@ -953,8 +965,8 @@ void ONNXImporter::import(const std::string &filepath) {
 
   // verify module
   if (llvm::failed(mlir::verify(*module))) {
-    llvm::errs() << "Module verification failed!\n";
-    // exit(-1);
+    llvm::errs() << "MLIR module verification failed.\n";
+    exit(-1);
   }
 
   // DEBUG

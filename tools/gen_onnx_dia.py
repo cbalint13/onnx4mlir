@@ -1,5 +1,34 @@
 #!/usr/bin/env python3
 
+###############################################################################
+#
+#  ONNX2MLIR (ONNX dialect mappings for composable optimizations)
+#
+#  Authors:
+#   Cristian Balint <cristian dot balint at gmail dot com>
+#
+#  Copyright (c) 2021,2025
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+###############################################################################
+
+##
+## \file tools/gen_onnx_dia.py
+##
+
+
 import re
 import sys
 import onnx
@@ -98,7 +127,7 @@ def get_mlir_attrs_from_str(attr):
     return None
   if not mlir_attr:
     mlir_attr = "AnyAttr"
- 
+
   default_value = onnx.helper.get_attribute_value(attr.default_value)
   if default_value:
     if isinstance(default_value, bytes):
@@ -139,14 +168,6 @@ def main():
   # iterate Ops
   for schema in defs.get_all_schemas_with_history():
 
-#   if schema.name == "Slice":
-#   if schema.name == "Constant":
-#   if schema.name == "NonMaxSuppression":
-#   if (schema.name == "Add") or \
-#      (schema.name == "Constant") or \
-#      (schema.name == "Split") or \
-#      (schema.name == "Unsqueeze"):
-
     # use latest version Op
     if schema.since_version != max(ops_versions[schema.name]):
       continue
@@ -158,7 +179,6 @@ def main():
     # definition
     inc.write(f'\n')
     inc.write(f'/// {schema.name} [v{schema.since_version}]\n')
-#    inc.write(f'def Onnx_{schema.name}Op : Onnx_Op<"{schema.name}", [Pure, OpInterface<"OperandCountInfo">]> {{\n')
     inc.write(f'def Onnx_{schema.name}Op : Onnx_Op<"{schema.name}", [{opinterfaces}]> {{\n')
     inc.write(f'  let summary = "ONNX {schema.name} operation";\n')
     inc.write(f'  let description = [{{\n')
@@ -206,17 +226,18 @@ def main():
 
     inc.write(f'}}\n')
 
-    print("\n====================[%s]=======================\n" % schema.name)
-#    print(dir(schema.outputs))
-    print("DBG [%s][%s][%s] [%s]" % (schema.domain, schema.support_level, schema.name, schema.since_version))
-    print("   ATTR [%s]" % (schema.attributes))
-#    print("   DOC [%s]" % (schema.doc))
-    for idx, inp in enumerate(schema.inputs):
-      print("   IN#%i [%s]" % (idx, inp))
-    for idx, out in enumerate(schema.outputs):
-      print("   OUT#%i [%s]" % (idx, out))
-    print("   FUNCBODY [%s]" % (schema.function_body))
-    print("   TYPECONSTRAINTS [%s]" % (schema.type_constraints))
+    if debug:
+      print("\n====================[%s]=======================\n" % schema.name)
+      print(dir(schema.outputs))
+      print("DBG [%s][%s][%s] [%s]" % (schema.domain, schema.support_level, schema.name, schema.since_version))
+      print("   ATTR [%s]" % (schema.attributes))
+      print("   DOC [%s]" % (schema.doc))
+      for idx, inp in enumerate(schema.inputs):
+        print("   IN#%i [%s]" % (idx, inp))
+      for idx, out in enumerate(schema.outputs):
+        print("   OUT#%i [%s]" % (idx, out))
+      print("   FUNCBODY [%s]" % (schema.function_body))
+      print("   TYPECONSTRAINTS [%s]" % (schema.type_constraints))
 
   inc.close()
 

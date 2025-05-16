@@ -44,8 +44,3 @@ add_custom_target(generate_onnx_ops ALL
 )
 
 add_dependencies(MLIROnnxIncGen generate_onnx_ops)
-
-#set(LLVM_TARGET_DEFINITIONS Passes.td)
-#mlir_tablegen(Passes.h.inc -gen-pass-decls -name RelayOpt)
-#add_public_tablegen_target(mlir_relay_pass_inc_gen)
-#add_mlir_doc(Passes RelayPasses ./ -gen-pass-doc)

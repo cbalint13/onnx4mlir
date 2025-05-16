@@ -1,11 +1,11 @@
 /******************************************************************************
  *
- * Copyright (c) 2021,2025
- *
- *     Cristian Balint <cristian dot balint at gmail dot com>
- *
  * ONNX2MLIR (ONNX dialect mappings for composable optimizations)
  *
+ * Authors:
+ *     Cristian Balint <cristian dot balint at gmail dot com>
+ *
+ * Copyright (c) 2021,2025
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  *****************************************************************************/
 
 /*!
- * \file OnnxDialect.hpp
+ * \file include/onnx2mlir/dialect/onnx/OnnxDialect.hpp
  *
  */
 
