@@ -129,13 +129,21 @@ def get_mlir_attrs_from_str(attr):
     mlir_attr = "AnyAttr"
 
   default_value = onnx.helper.get_attribute_value(attr.default_value)
-  if default_value:
+  if default_value is not None:
+    if isinstance(default_value, float):
+      default_value = "%g" % default_value
     if isinstance(default_value, bytes):
       default_value = default_value.decode('utf-8')
+    if isinstance(default_value, list):
+      if all(isinstance(item, int) for item in default_value):
+        decoded_strings = [str(item) for item in default_value]
+      else:
+        decoded_strings = ['\\"' + item.decode('utf-8') + '\\"' for item in default_value]
+      default_value = '{' + ','.join(decoded_strings) + '}'
     attr_type = "StrAttr" if (mlir_attr == "StrAttr") else "Attr"
     mlir_attr = f'DefaultValued{attr_type}<{mlir_attr}, "{default_value}">'
 
-  if not attr.required:
+  if (not attr.required) and (default_value is None):
     mlir_attr = f"OptionalAttr<{mlir_attr}>"
 
   return mlir_attr
