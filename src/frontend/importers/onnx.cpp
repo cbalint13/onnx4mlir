@@ -151,15 +151,15 @@ static mlir::Type onnx_datatype_to_mlir_type(const int32_t data_type_int,
   case onnx::TensorProto::FLOAT:
     return mlir::Float32Type::get(context);
   case onnx::TensorProto::INT4:
-    return mlir::IntegerType::get(context, 4, mlir::IntegerType::Signless);
+    return mlir::IntegerType::get(context, 4);
   case onnx::TensorProto::INT8:
-    return mlir::IntegerType::get(context, 8, mlir::IntegerType::Signless);
+    return mlir::IntegerType::get(context, 8);
   case onnx::TensorProto::INT16:
-    return mlir::IntegerType::get(context, 16, mlir::IntegerType::Signless);
+    return mlir::IntegerType::get(context, 16);
   case onnx::TensorProto::INT32:
-    return mlir::IntegerType::get(context, 32, mlir::IntegerType::Signless);
+    return mlir::IntegerType::get(context, 32);
   case onnx::TensorProto::INT64:
-    return mlir::IntegerType::get(context, 64, mlir::IntegerType::Signless);
+    return mlir::IntegerType::get(context, 64);
   case onnx::TensorProto::BOOL:
     return mlir::IntegerType::get(context, 1);
   case onnx::TensorProto::UINT4:
@@ -410,7 +410,7 @@ get_node_attribute(const onnx::AttributeProto &attribute,
     return mlir::NamedAttribute(attribute.name(), mlir::FloatAttr::get(mlir::Float32Type::get(context), attribute.f()));
   case onnx::AttributeProto::INT:
     std::cout << "    Value: \"" << attribute.i() << "\"" << std::endl;
-    return mlir::NamedAttribute(attribute.name(), mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64, mlir::IntegerType::Signless),
+    return mlir::NamedAttribute(attribute.name(), mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64),
                                   attribute.i()));
   case onnx::AttributeProto::STRING:
     std::cout << "    Value: \"" << attribute.s() << "\"" << std::endl;
@@ -542,8 +542,7 @@ static int getOnnxOpNumIO(const std::string &opName, const bool dir_out=false) {
   mlir::OpBuilder builder(&context);
   context.loadDialect<onnx2mlir::dialect::onnx::OnnxDialect>();
 
-  auto opNameStr = builder.getStringAttr("onnx." + opName);
-  mlir::OperationState state(builder.getUnknownLoc(), opNameStr);
+  mlir::OperationState state(builder.getUnknownLoc(), "onnx." + opName);
   auto op = builder.create(state);
   if (dir_out)
     onum = mlir::cast<onnx2mlir::dialect::onnx::OPCountInfo>(op)
@@ -556,15 +555,20 @@ static int getOnnxOpNumIO(const std::string &opName, const bool dir_out=false) {
   return onum;
 }
 
+static bool checkOnnxOpExists(mlir::MLIRContext *context, const std::string &opName) {
+  if (!mlir::OperationName("onnx." + opName, context).isRegistered()) {
+    return false;
+  }
+  return true;
+}
+
 static mlir::Operation *
 createOnnxOp(mlir::OpBuilder &builder, const std::string &opName,
              const std::vector<mlir::Type> &types = {},
              const std::vector<mlir::Value> &values = {},
              const std::vector<mlir::NamedAttribute> &attrs = {}) {
-
   // setup operation
-  mlir::StringAttr opNameStr = builder.getStringAttr("onnx." + opName);
-  mlir::OperationState state(builder.getUnknownLoc(), opNameStr);
+  mlir::OperationState state(builder.getUnknownLoc(), "onnx." + opName);
 
   for (auto type : types)
     state.addTypes(type);
@@ -652,6 +656,12 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
 
   // add constant nodes
   for (const auto &node : graph_proto.node()) {
+
+    if (!checkOnnxOpExists(mlirCtx.get(), node.op_type())) {
+      llvm::outs() << "ERROR: operation [" << node.op_type() << "] not registered.\n";
+      exit(-1);
+    }
+
     if (node.op_type() == "Constant") {
       // DEBUG
       // print_graph_node(node, mlirCtx.get());
