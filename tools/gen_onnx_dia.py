@@ -197,6 +197,8 @@ def main():
     inc.write(f'def Onnx_{schema.name}Op : Onnx_Op<"{schema.name}", [{opinterfaces}]> {{\n')
     inc.write(f'  let summary = "ONNX {schema.name} operation";\n')
     inc.write(f'  let description = [{{\n')
+
+    # shorted doc text
     doctxt = "\n".join([("  " + line.lstrip()) if line else "" for line in schema.doc.splitlines() if line])
     doctxt = doctxt.split('.')[0]
     if '.' not in doctxt[-3:] != '.': doctxt += '.'
@@ -206,33 +208,38 @@ def main():
 
     # arguments
     inp_types_str = "  let arguments = (ins "
+    prefill = ' ' * len(inp_types_str)
     if len(schema.inputs):
       for inp in schema.inputs:
         mlir_types = get_mlir_types_from_str(inp, schema.type_constraints, inp.option)
-        inp_types_str += f'{mlir_types}:${inp.name},\n' + (' '*23)
+        inp_types_str += f'{mlir_types}:${inp.name},\n' + prefill
 
     # attributes
     if len(schema.attributes):
       for idx, attr in enumerate(sorted(schema.attributes)):
         mlir_attr = get_mlir_attrs_from_str(schema.attributes[attr])
         if mlir_attr is not None:
-          inp_types_str += f'{mlir_attr}:${attr},\n' + (' '*23)
+          inp_types_str += f'{mlir_attr}:${attr},\n' + prefill
 
-    # trim last comma
     if len(inp_types_str):
+      # trim last comma
       inp_types_str = inp_types_str[:inp_types_str.rfind(',')]
     inc.write(f'{inp_types_str});\n')
 
     # results
     out_types_str = "  let results = (outs "
+    prefill = ' ' * len(out_types_str)
     for idx, out in enumerate(schema.outputs):
       opt = out.option if (schema.name != "Constant") else onnx.defs.OpSchema.FormalParameterOption.Optional
       mlir_types = get_mlir_types_from_str(out, schema.type_constraints, opt)
-      out_types_str += f'{mlir_types}:${out.name},%s' \
-        % (('\n'+' '*21 if idx+1 != len(schema.outputs) else ''))
-    out_types_str = out_types_str[:-1] if out_types_str[-1] == ',' else out_types_str
+      out_types_str += f'{mlir_types}:${out.name},\n' + prefill
+
+    if len(out_types_str):
+      # trim last comma
+      out_types_str = out_types_str[:out_types_str.rfind(',')]
     inc.write(f'{out_types_str});\n')
 
+    # class appendix
     inc.write(f'  let extraClassDeclaration = [{{\n')
     inc.write(f'    int getDefinedOperandCount() {{\n')
     inc.write(f'      return %i;\n' % (-1 if "Variadic" in inp_types_str else len(schema.inputs)))
