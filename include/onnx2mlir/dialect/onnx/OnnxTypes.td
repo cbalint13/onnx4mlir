@@ -27,10 +27,10 @@
  *
  */
 
-include "mlir/IR/PatternBase.td"
-
 #ifndef ONNX2MLIR_FRONTEND_ONNXTYPES_TD_
 #define ONNX2MLIR_FRONTEND_ONNXTYPES_TD_
+
+include "mlir/IR/PatternBase.td"
 
 class Onnx_Type<string name, string typeMnemonic,
                 string baseCppClass = "::mlir::Type">

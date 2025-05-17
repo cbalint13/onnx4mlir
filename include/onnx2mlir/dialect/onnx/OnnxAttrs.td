@@ -27,11 +27,10 @@
  *
  */
 
-include "mlir/IR/AttrTypeBase.td"
-
-
 #ifndef ONNX2MLIR_FRONTEND_ONNXATTR_TD_
 #define ONNX2MLIR_FRONTEND_ONNXATTR_TD_
+
+include "mlir/IR/AttrTypeBase.td"
 
 class BaseLayoutAttr<Dialect dialect, string name, list<Trait> traits = []>
     : AttrDef<dialect, name, traits> {
@@ -94,6 +93,5 @@ def OnnxTensorEncodingAttr : Onnx_LayoutAttr<"OnnxTensorEncoding"> {
 
   //let cppNamespace = "::mlir";
 }
-
 
 #endif // ONNX2MLIR_FRONTEND_ONNXATTR_TD_
