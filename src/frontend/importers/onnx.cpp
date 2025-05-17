@@ -151,7 +151,7 @@ static mlir::Type onnx_datatype_to_mlir_type(const int32_t data_type_int,
   case onnx::TensorProto::FLOAT:
     return mlir::Float32Type::get(context);
   case onnx::TensorProto::INT4:
-    return mlir::IntegerType::get(context, 4);
+    return mlir::IntegerType::get(context, 4, mlir::IntegerType::Signless);
   case onnx::TensorProto::INT8:
     return mlir::IntegerType::get(context, 8, mlir::IntegerType::Signless);
   case onnx::TensorProto::INT16:
@@ -234,10 +234,11 @@ get_mlir_tensor(const std::string &data, shp_T shape, typ_T dType,
   return denseAttrs;
 }
 
-template <typename shp_T, typename dat_T, typename typ_T>
+template <typename shp_T, typename typ_T, typename Container>
 static mlir::DenseElementsAttr
-get_mlir_tensor(const google::protobuf::RepeatedField<dat_T> &data, shp_T shape,
-                typ_T dType, const mlir::Attribute &eAttr = {}) {
+get_mlir_tensor(const Container &data, shp_T shape, typ_T dType,
+                const mlir::Attribute &eAttr = {}) {
+  using dat_T = typename Container::value_type;
   auto dims = llvm::ArrayRef(shape.data(), shape.size());
   auto shapedType = mlir::RankedTensorType::get(dims, dType, eAttr);
   auto denseAttrs = mlir::DenseElementsAttr::get(
@@ -245,15 +246,24 @@ get_mlir_tensor(const google::protobuf::RepeatedField<dat_T> &data, shp_T shape,
   return denseAttrs;
 }
 
-template <typename shp_T, typename dat_T, typename typ_T>
-static mlir::DenseElementsAttr
-get_mlir_tensor(const std::vector<dat_T> &data, shp_T shape, typ_T dType,
-                const mlir::Attribute &eAttr = {}) {
-  auto dims = llvm::ArrayRef(shape.data(), shape.size());
-  auto shapedType = mlir::RankedTensorType::get(dims, dType, eAttr);
-  auto denseAttrs = mlir::DenseElementsAttr::get(
-      shapedType, llvm::ArrayRef<dat_T>(data.data(), data.size()));
-  return denseAttrs;
+template <typename Container>
+static mlir::ArrayAttr
+get_mlir_array(mlir::MLIRContext *context, const Container &data) {
+  using dat_T = typename Container::value_type;
+  llvm::SmallVector<mlir::Attribute> attrVec;
+  for (const dat_T &value : data) {
+    if constexpr (std::is_same_v<dat_T, int64_t>)
+      attrVec.push_back(mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64), value));
+    else if constexpr (std::is_same_v<dat_T, float>)
+      attrVec.push_back(mlir::FloatAttr::get(mlir::Float32Type::get(context), value));
+    else if constexpr (std::is_same_v<dat_T, std::string>)
+      attrVec.push_back(mlir::StringAttr::get(context, value));
+    else {
+      std::cout << "ERROR: unimplemented array type requested." << std::endl;
+      exit(-1);
+    }
+  }
+  return mlir::ArrayAttr::get(context, attrVec);
 }
 
 static mlir::ElementsAttr
@@ -384,9 +394,10 @@ onnx_valueinfo_to_mlir_type(const onnx::ValueInfoProto &value_proto,
   }
 }
 
-static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
-                                          mlir::MLIRContext *context,
-                                          const mlir::Attribute &eAttr = {}) {
+static std::optional<mlir::NamedAttribute>
+get_node_attribute(const onnx::AttributeProto &attribute,
+                   mlir::MLIRContext *context,
+                   const mlir::Attribute &eAttr = {}) {
   std::cout << "    Name: " << attribute.name() << std::endl;
   std::cout << "    Type: " << onnx_attrtype_tostr(attribute.type())
             << std::endl;
@@ -396,17 +407,17 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
   switch (attribute.type()) {
   case onnx::AttributeProto::FLOAT:
     std::cout << "    Value: \"" << attribute.f() << "\"" << std::endl;
-    return mlir::FloatAttr::get(mlir::Float32Type::get(context), attribute.f());
+    return mlir::NamedAttribute(attribute.name(), mlir::FloatAttr::get(mlir::Float32Type::get(context), attribute.f()));
   case onnx::AttributeProto::INT:
     std::cout << "    Value: \"" << attribute.i() << "\"" << std::endl;
-    return mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64),
-                                  attribute.i());
+    return mlir::NamedAttribute(attribute.name(), mlir::IntegerAttr::get(mlir::IntegerType::get(context, 64, mlir::IntegerType::Signless),
+                                  attribute.i()));
   case onnx::AttributeProto::STRING:
     std::cout << "    Value: \"" << attribute.s() << "\"" << std::endl;
-    return mlir::StringAttr::get(context, attribute.s());
+    return mlir::NamedAttribute(attribute.name(), mlir::StringAttr::get(context, attribute.s()));
   case onnx::AttributeProto::TENSOR:
     std::cout << "    Value (Tensor):" << std::endl;
-    return onnx_tensorproto_to_mlir(attribute.t(), context, eAttr);
+    return mlir::NamedAttribute(attribute.name(), onnx_tensorproto_to_mlir(attribute.t(), context, eAttr));
   case onnx::AttributeProto::GRAPH:
     std::cout
         << "    Value (Graph): (Graph details not printed in this function)"
@@ -414,22 +425,11 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
     std::cout << "ERROR: Parsing of this type is not implemented." << std::endl;
     exit(-1);
   case onnx::AttributeProto::FLOATS:
-    return get_mlir_tensor(attribute.floats(),
-                           llvm::ArrayRef<long int>({attribute.floats_size()}),
-                           mlir::Float32Type::get(context), eAttr);
+    return mlir::NamedAttribute(attribute.name(), get_mlir_array(context, attribute.floats()));
   case onnx::AttributeProto::INTS:
-    return get_mlir_tensor(attribute.ints(),
-                           llvm::ArrayRef<long int>({attribute.ints_size()}),
-                           mlir::IntegerType::get(context, 64), eAttr);
+    return mlir::NamedAttribute(attribute.name(), get_mlir_array(context, attribute.ints()));
   case onnx::AttributeProto::STRINGS:
-    std::cout << "    Value (Strings): [";
-    for (int i = 0; i < attribute.strings_size(); ++i) {
-      std::cout << "\"" << attribute.strings(i) << "\"";
-      if (i < attribute.strings_size() - 1)
-        std::cout << ", ";
-    }
-    std::cout << "]" << std::endl;
-    break;
+    return mlir::NamedAttribute(attribute.name(), get_mlir_array(context, attribute.strings()));
   case onnx::AttributeProto::TENSORS:
     std::cout << "    Value (Tensors):" << std::endl;
     for (int i = 0; i < attribute.tensors_size(); ++i) {
@@ -474,7 +474,7 @@ static mlir::Attribute get_node_attribute(const onnx::AttributeProto &attribute,
     exit(-1);
   }
 
-  return nullptr;
+  return std::nullopt;
 }
 
 static void print_graph_node(const onnx::NodeProto &node,
@@ -512,7 +512,7 @@ static void print_graph_node(const onnx::NodeProto &node,
     flags.elideLargeElementsAttrs(16);
     llvm::outs() << "      Data: ";
     mlir::AsmState state(context, flags);
-    attr.print(llvm::outs(), state);
+    attr->getValue().print(llvm::outs(), state);
     llvm::outs() << "\n";
     llvm::outs().flush();
   }
@@ -658,16 +658,15 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
 
       // attributes
       std::vector<mlir::NamedAttribute> attrs;
-      auto value = get_node_attribute(node.attribute()[0], mlirCtx.get());
-      mlir::NamedAttribute attr(node.attribute()[0].name(), value);
-      attrs.push_back(attr);
+      auto attr = get_node_attribute(node.attribute()[0], mlirCtx.get());
+      attrs.push_back(*attr);
       // origin
       auto nameVal = builder.getStringAttr(node.name());
       mlir::NamedAttribute label("onnx.node.name", nameVal);
       attrs.push_back(label);
       // result type
       auto types = std::vector<mlir::Type>(
-          {mlir::dyn_cast<mlir::DenseElementsAttr>(value).getType()});
+          {mlir::dyn_cast<mlir::DenseElementsAttr>(attr->getValue()).getType()});
 
       auto op = createOnnxOp(builder, "Constant", types, {}, attrs);
 
@@ -728,9 +727,8 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
       // attributes
       std::vector<mlir::NamedAttribute> attrs;
       for (const auto &attribute : node.attribute()) {
-        auto value = get_node_attribute(attribute, mlirCtx.get());
-        mlir::NamedAttribute attr(attribute.name(), value);
-        attrs.push_back(attr);
+        auto attr = get_node_attribute(attribute, mlirCtx.get());
+        attrs.push_back(*attr);
       }
 
       // origin
