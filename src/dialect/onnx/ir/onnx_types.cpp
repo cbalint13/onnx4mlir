@@ -27,23 +27,24 @@
  * \brief Onnx dialect types implementation
  */
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/DialectImplementation.h>
 #include <mlir/IR/Types.h>
-#include <llvm/ADT/TypeSwitch.h>
 
 #include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxTypes.hpp"
 
 #define GET_TYPEDEF_CLASSES
-#include "onnx2mlir/dialect/onnx/OnnxTypes.cpp.inc"
+#include "onnx2mlir/dialect/onnx/OnnxTypes.cpp.inc" // NOLINT
+#undef GET_TYPEDEF_CLASSES
 
 namespace onnx2mlir::dialect::onnx {
 
 void OnnxDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "onnx2mlir/dialect/onnx/OnnxTypes.cpp.inc"
+#include "onnx2mlir/dialect/onnx/OnnxTypes.cpp.inc" // NOLINT
       >();
 }
 

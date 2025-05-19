@@ -31,6 +31,6 @@
 
 namespace onnx2mlir::frontend {
 
-void ONNXConverter::convert(mlir::ModuleOp &module) {}
+void ONNXConverter::convert(mlir::ModuleOp *module) {}
 
 } // end namespace onnx2mlir::frontend

@@ -27,13 +27,16 @@
  * \brief Generic frontend declarations
  */
 
-#ifndef ONNX2MLIR_FRONTEND_IMPORTER_HPP_
-#define ONNX2MLIR_FRONTEND_IMPORTER_HPP_
+#ifndef INCLUDE_ONNX2MLIR_FRONTEND_FRONTEND_HPP_
+#define INCLUDE_ONNX2MLIR_FRONTEND_FRONTEND_HPP_
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/OwningOpRef.h>
 
+#include <map>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace onnx2mlir {
 
@@ -42,18 +45,18 @@ namespace onnx2mlir {
  */
 template <typename ImporterBackend> class Importer : public ImporterBackend {
 public:
+  // forward constructor
+  template <typename... Args>
+  explicit Importer(Args &&...args)
+      : ImporterBackend(std::forward<Args>(args)...) {}
   // input file parser
   void importModule(const std::string &filepath) {
     ImporterBackend::import(filepath);
   }
   // get the MLIR context
-  mlir::MLIRContext getMLIRCtx() {
-    return ImporterBackend::get_mlir_ctx();
-  }
+  mlir::MLIRContext getMLIRCtx() { return ImporterBackend::get_mlir_ctx(); }
   // get the MLIR module
-  mlir::ModuleOp getMLIRModule() {
-    return ImporterBackend::get_mlir_module();
-  }
+  mlir::ModuleOp getMLIRModule() { return ImporterBackend::get_mlir_module(); }
 };
 
 /*
@@ -63,7 +66,7 @@ template <typename ConverterBackend> class Converter : public ConverterBackend {
 public:
   // input file parser
   void convertModule(mlir::ModuleOp module) {
-    ConverterBackend::convert(module);
+    ConverterBackend::convert(&module);
   }
 };
 
@@ -72,21 +75,19 @@ namespace frontend {
 // importer interface
 class FrontendImporter {
 public:
-  FrontendImporter()
-  : mlirCtx(std::make_unique<mlir::MLIRContext>()) {};
+  explicit FrontendImporter(const std::map<std::string, std::string> &options)
+      : opt_args(options), mlirCtx(std::make_unique<mlir::MLIRContext>()) {}
 
   virtual ~FrontendImporter() = default;
 
 protected:
   virtual void import(const std::string &filepath) = 0;
 
-  mlir::MLIRContext* get_mlir_ctx() {
-    return mlirCtx.get();
-  };
-  mlir::ModuleOp get_mlir_module() {
-    return module.get();
-  };
+  mlir::MLIRContext *get_mlir_ctx() { return mlirCtx.get(); }
+  mlir::ModuleOp get_mlir_module() { return module.get(); }
 
+  // driver options argument
+  std::map<std::string, std::string> opt_args;
   // MLIR context
   std::unique_ptr<mlir::MLIRContext> mlirCtx;
   // MLIR module
@@ -99,10 +100,10 @@ public:
   virtual ~FrontendConverter() = default;
 
 protected:
-  virtual void convert(mlir::ModuleOp &module) = 0;
+  virtual void convert(mlir::ModuleOp *module) = 0;
 };
 
 } // namespace frontend
 } // namespace onnx2mlir
 
-#endif // ONNX2MLIR_FRONTEND_IMPORTER_HPP_
+#endif // INCLUDE_ONNX2MLIR_FRONTEND_FRONTEND_HPP_

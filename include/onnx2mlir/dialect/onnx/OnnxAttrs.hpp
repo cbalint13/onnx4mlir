@@ -27,12 +27,12 @@
  * \brief Onnx dialect attributes declaration
  */
 
-#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_
-#define ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_
+#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_
+#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_
 
 #include <mlir/IR/Attributes.h>
 
 #define GET_ATTRDEF_CLASSES
 #include "onnx2mlir/dialect/onnx/OnnxAttrs.h.inc"
 
-#endif // ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_
+#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_

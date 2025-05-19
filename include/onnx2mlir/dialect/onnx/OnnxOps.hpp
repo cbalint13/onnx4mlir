@@ -27,8 +27,8 @@
  * \brief Onnx dialect operations declaration
  */
 
-#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
-#define ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
+#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
+#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
 
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -40,4 +40,4 @@
 #define GET_OP_CLASSES
 #include "onnx2mlir/dialect/onnx/Onnx.h.inc"
 
-#endif // ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
+#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_

@@ -45,6 +45,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -111,6 +112,8 @@ static mlir::Type OnnxToMlir_dType(const int32_t data_type_int,
                  << data_type_int << "\n";
     exit(-1);
   }
+
+  return nullptr;
 }
 
 template <typename shp_T, typename typ_T>
@@ -121,6 +124,7 @@ getMlirTensor(const std::string &data, shp_T shape, typ_T dType,
   auto shapedType = mlir::RankedTensorType::get(dims, dType, eAttr);
   auto denseAttrs = mlir::DenseElementsAttr::getFromRawBuffer(
       shapedType, llvm::ArrayRef(data.data(), data.size()));
+
   return denseAttrs;
 }
 
@@ -133,6 +137,7 @@ getMlirTensor(const Container &data, shp_T shape, typ_T dType,
   auto shapedType = mlir::RankedTensorType::get(dims, dType, eAttr);
   auto denseAttrs = mlir::DenseElementsAttr::get(
       shapedType, llvm::ArrayRef<dat_T>(data.data(), data.size()));
+
   return denseAttrs;
 }
 
@@ -142,26 +147,26 @@ static mlir::ArrayAttr getMlirArray(mlir::MLIRContext *ctx,
   using dat_T = typename Container::value_type;
   llvm::SmallVector<mlir::Attribute> attrVec;
   for (const dat_T &value : data) {
-    if constexpr (std::is_same_v<dat_T, int64_t>)
+    if constexpr (std::is_same_v<dat_T, int64_t>) {
       attrVec.push_back(
           mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), value));
-    else if constexpr (std::is_same_v<dat_T, float>)
+    } else if constexpr (std::is_same_v<dat_T, float>) {
       attrVec.push_back(
           mlir::FloatAttr::get(mlir::Float32Type::get(ctx), value));
-    else if constexpr (std::is_same_v<dat_T, std::string>)
+    } else if constexpr (std::is_same_v<dat_T, std::string>) {
       attrVec.push_back(mlir::StringAttr::get(ctx, value));
-    else {
+    } else {
       llvm::errs() << "ERROR: unimplemented array type requested.\n";
       exit(-1);
     }
   }
+
   return mlir::ArrayAttr::get(ctx, attrVec);
 }
 
 static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
                                             mlir::MLIRContext *ctx,
                                             const mlir::Attribute &eAttr = {}) {
-
   auto dType = OnnxToMlir_dType(tensor.data_type(), ctx);
 
   if (tensor.has_raw_data()) {
@@ -221,6 +226,7 @@ static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
       exit(-1);
     }
   }
+
   return nullptr;
 }
 
@@ -255,7 +261,6 @@ static mlir::ElementsAttr
 OnnxToMlir_SparseTensor(const onnx::SparseTensorProto &tensor,
                         mlir::MLIRContext *ctx,
                         const mlir::Attribute &eAttr = {}) {
-
   auto valAttr = OnnxToMlir_Tensor(tensor.values(), ctx);
   auto indAttr = OnnxToMlir_Tensor(tensor.indices(), ctx);
   auto valType = mlir::cast<mlir::RankedTensorType>(valAttr.getType());
@@ -312,7 +317,7 @@ OnnxToMlir_SparseTensor(const onnx::SparseTensorProto &tensor,
 }
 
 template <typename dat_T>
-static std::vector<int64_t> OnnxToMlir_Shape(dat_T &tensor_type) {
+static std::vector<int64_t> OnnxToMlir_Shape(const dat_T &tensor_type) {
   // extract shape
   std::vector<int64_t> dataShape;
   if (tensor_type.has_shape()) {
@@ -331,26 +336,27 @@ static std::vector<int64_t> OnnxToMlir_Shape(dat_T &tensor_type) {
     llvm::errs() << "ERROR: Tensor has no shape.\n";
     exit(-1);
   }
+
   return dataShape;
 }
 
 static mlir::Type OnnxToMlir_Type(const onnx::ValueInfoProto &value_proto,
                                   mlir::MLIRContext *ctx) {
   const auto &type_proto = value_proto.type();
-  // value data type
+  // triage value data type
   switch (type_proto.value_case()) {
   case onnx::TypeProto::kTensorType: {
     const auto &tensor_type = type_proto.tensor_type();
-    auto elemType = OnnxToMlir_dType(tensor_type.elem_type(), ctx);
-    const auto dataShape = OnnxToMlir_Shape(type_proto.tensor_type());
-    return mlir::RankedTensorType::get(dataShape, elemType);
+    const auto dShape = OnnxToMlir_Shape(type_proto.tensor_type());
+    auto dType = OnnxToMlir_dType(tensor_type.elem_type(), ctx);
+    return mlir::RankedTensorType::get(dShape, dType);
   }
   case onnx::TypeProto::kSparseTensorType: {
     const auto &tensor_type = type_proto.sparse_tensor_type();
-    const auto denseShape = OnnxToMlir_Shape(tensor_type);
+    const auto dShape = OnnxToMlir_Shape(tensor_type);
     auto dType = OnnxToMlir_dType(tensor_type.elem_type(), ctx);
-    auto encCOO = GetCOOEncoding(/*rank*/ denseShape.size(), ctx);
-    return mlir::RankedTensorType::get(denseShape, dType, encCOO);
+    auto encCOO = GetCOOEncoding(/*rank*/ dShape.size(), ctx);
+    return mlir::RankedTensorType::get(dShape, dType, encCOO);
   }
   case onnx::TypeProto::kSequenceType:
   case onnx::TypeProto::kMapType:
@@ -360,14 +366,15 @@ static mlir::Type OnnxToMlir_Type(const onnx::ValueInfoProto &value_proto,
     llvm::errs() << "ERROR: TypeProto is unsupported.\n";
     exit(-1);
   }
+
+  return nullptr;
 }
 
 static std::optional<mlir::NamedAttribute>
 OnnxToMlir_Attr(const onnx::AttributeProto &attribute, mlir::MLIRContext *ctx,
                 const mlir::Attribute &eAttr = {}) {
-
   mlir::OpBuilder builder(ctx);
-
+  // triage attribute type
   switch (attribute.type()) {
   case onnx::AttributeProto::FLOAT:
     return mlir::NamedAttribute(
@@ -436,7 +443,6 @@ OnnxToMlir_Attr(const onnx::AttributeProto &attribute, mlir::MLIRContext *ctx,
 
 static int getOnnxOpNumIO(const std::string &opName,
                           const bool dir_out = false) {
-
   int nIO;
   mlir::MLIRContext ctx;
   mlir::OpBuilder builder(&ctx);
@@ -463,12 +469,12 @@ static bool checkOnnxOpExists(mlir::MLIRContext *ctx,
 }
 
 static mlir::Operation *
-createOnnxOp(mlir::OpBuilder &builder, const std::string &opName,
+createOnnxOp(mlir::OpBuilder *builder, const std::string &opName,
              const std::vector<mlir::Type> &types = {},
              const std::vector<mlir::Value> &values = {},
              const std::vector<mlir::NamedAttribute> &attrs = {}) {
   // setup operation
-  mlir::OperationState state(builder.getUnknownLoc(), "onnx." + opName);
+  mlir::OperationState state(builder->getUnknownLoc(), "onnx." + opName);
 
   for (auto type : types)
     state.addTypes(type);
@@ -477,7 +483,7 @@ createOnnxOp(mlir::OpBuilder &builder, const std::string &opName,
   for (auto attr : attrs)
     state.addAttributes(attr);
 
-  mlir::Operation *op = builder.create(state);
+  mlir::Operation *op = builder->create(state);
 
   return op;
 }
@@ -488,7 +494,8 @@ namespace onnx2mlir::frontend {
  *  ONNXImporter class
  */
 
-ONNXImporter::ONNXImporter() {
+ONNXImporter::ONNXImporter(const std::map<std::string, std::string> &options)
+    : FrontendImporter(options) {
   // context setup
   mlirCtx->loadDialect<mlir::affine::AffineDialect,
                        mlir::complex::ComplexDialect, mlir::func::FuncDialect,
@@ -501,7 +508,6 @@ ONNXImporter::ONNXImporter() {
 }
 
 void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
-
   // i/o map storage
   std::map<std::string, std::shared_ptr<onnx::ValueInfoProto>> vis;
 
@@ -557,7 +563,6 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
 
   // Step 1, add constant nodes
   for (const auto &node : graph_proto.node()) {
-
     if (!checkOnnxOpExists(mlirCtx.get(), node.op_type())) {
       llvm::errs() << "ERROR: operation [" << node.op_type()
                    << "] not registered.\n";
@@ -577,7 +582,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
       auto types = std::vector<mlir::Type>(
           {mlir::dyn_cast<mlir::ElementsAttr>(attr->getValue()).getType()});
 
-      auto op = createOnnxOp(builder, "Constant", types, {}, attrs);
+      auto op = createOnnxOp(&builder, "Constant", types, {}, attrs);
 
       block->push_back(op);
       // store output
@@ -600,7 +605,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
     // result type
     auto types = std::vector<mlir::Type>({value.getType()});
 
-    auto op = createOnnxOp(builder, "Constant", types, {}, attrs);
+    auto op = createOnnxOp(&builder, "Constant", types, {}, attrs);
 
     block->push_back(op);
     // map to i/o
@@ -620,7 +625,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
     mlir::Type noneType = mlir::NoneType::get(mlirCtx.get());
     auto types = std::vector<mlir::Type>({noneType});
 
-    notype = createOnnxOp(builder, "Constant", types, {}, attrs);
+    notype = createOnnxOp(&builder, "Constant", types, {}, attrs);
     block->push_back(notype);
   }
 
@@ -681,7 +686,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
         operands.push_back(notype->getResult(0));
       }
       // Pass 4, create the operation
-      auto op = createOnnxOp(builder, node.op_type(), types, operands, attrs);
+      auto op = createOnnxOp(&builder, node.op_type(), types, operands, attrs);
       block->push_back(op);
       // Pass 5, map the operation by i/o
       auto op_ptr = std::make_shared<mlir::Operation *>(op);
@@ -741,10 +746,8 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
 }
 
 void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
-
-  std::vector<mlir::Type> inputs;
-
   // main inputs
+  std::vector<mlir::Type> inputs;
   for (const auto &input : graph_proto.input()) {
     if (input.has_type()) {
       inputs.push_back(OnnxToMlir_Type(input, mlirCtx.get()));
@@ -754,9 +757,8 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
     }
   }
 
-  std::vector<mlir::Type> outputs;
-
   // main outputs
+  std::vector<mlir::Type> outputs;
   for (const auto &output : graph_proto.output()) {
     if (output.has_type()) {
       outputs.push_back(OnnxToMlir_Type(output, mlirCtx.get()));
@@ -788,7 +790,6 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
 }
 
 void ONNXImporter::import(const std::string &filepath) {
-
   llvm::outs() << "ONNX engine version: " << onnx::LAST_RELEASE_VERSION << "\n";
   llvm::outs() << "ONNX engine IR version: " << onnx::IR_VERSION << "\n";
 

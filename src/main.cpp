@@ -27,45 +27,65 @@
  * \brief Main compiler program
  */
 
+#include <iostream>
+#include <map>
+#include <regex>
+#include <string>
+
 #include "onnx2mlir/frontend/onnx.hpp"
 
-int main(int argc, char **argv) {
+static void printUsage() {
+  std::cout << std::endl;
+  std::cout << "Usage: onnx2mlir [--help]\n"
+            << "             [--onnx-convert-ops <int : (optional | default is "
+               "max supported)>]\n"
+            << "       input_file\n\n";
+}
 
+int main(int argc, char **argv) {
   /// command-line params
-  bool printUsage = false;
   std::string ONNXFilename = "";
+  std::map<std::string, std::string> options;
 
   /// command-line parser
   for (int i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
-      if (!strcmp(argv[i], "--help")) {
-        printUsage = true;
-        i++;
+      const auto &arg = std::string(argv[i]);
+      if (arg == "--help") {
+        printUsage();
+        exit(0);
+      } else if (arg == "--onnx-convert-ops") {
+        bool isDigitsOnly = std::regex_match(argv[i + 1], std::regex(R"(\d+)"));
+        if (isDigitsOnly) {
+          options[argv[i]] = argv[i + 1];
+          i++;
+        } else {
+          options[argv[i]] = "";
+        }
         continue;
+      } else {
+        std::cout << "Unknown argument `" << arg << "`" << std::endl;
+        printUsage();
+        exit(-1);
       }
-      std::cout << "Unknown option: " << argv[i] << std::endl;
-      printUsage = true;
-      break;
-    } else if (argv[i][0] != '-') {
+    } else {
       if (!ONNXFilename.size()) {
         ONNXFilename = argv[i];
         continue;
       }
     }
   }
+
+  // check input file
   if (!ONNXFilename.size()) {
     std::cout << "ERROR: missing onnx_file" << std::endl;
-  }
-  /// check required options
-  if (!ONNXFilename.size() || printUsage) {
-    std::cout << std::endl;
-    std::cout << "Usage: onnx2mlir [--help]\n"
-              << "             onnx_file\n\n";
+    printUsage();
     exit(-1);
   }
 
-  auto ONNXLoader = new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>();
+  auto ONNXLoader = new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
   auto ONNXConverter = new onnx2mlir::Converter<onnx2mlir::frontend::ONNXConverter>();
+
   ONNXLoader->importModule(ONNXFilename);
   ONNXConverter->convertModule(ONNXLoader->getMLIRModule());
 

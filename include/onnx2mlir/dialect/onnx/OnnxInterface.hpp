@@ -27,11 +27,11 @@
  * \brief Onnx dialect interfaces declaration
  */
 
-#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
-#define ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
+#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
+#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
 
 #include <mlir/IR/OpDefinition.h>
 
 #include "onnx2mlir/dialect/onnx/OnnxInterface.h.inc"
 
-#endif // ONNX2MLIR_DIALECT_ONNX_ONNXTYPES_HPP_
+#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_

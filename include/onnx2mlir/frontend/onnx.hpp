@@ -27,11 +27,12 @@
  * \brief Onnx frontend declarations
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNX_HPP_
-#define ONNX2MLIR_FRONTEND_ONNX_HPP_
+#ifndef INCLUDE_ONNX2MLIR_FRONTEND_ONNX_HPP_
+#define INCLUDE_ONNX2MLIR_FRONTEND_ONNX_HPP_
 
 #include <onnx/onnx_pb.h>
 
+#include <map>
 #include <string>
 
 #include "onnx2mlir/frontend/frontend.hpp"
@@ -44,9 +45,11 @@ namespace frontend {
  */
 class ONNXImporter : public FrontendImporter {
 public:
-  ONNXImporter();
+  explicit ONNXImporter(const std::map<std::string, std::string> &options);
+
 protected:
   void import(const std::string &filepath) override;
+
 private:
   // parse the graph ins & outs
   void parse_graph_io(const onnx::GraphProto &graph_proto);
@@ -59,10 +62,10 @@ private:
  */
 class ONNXConverter : public FrontendConverter {
 protected:
-  void convert(mlir::ModuleOp &module) override;
+  void convert(mlir::ModuleOp *module) override;
 };
 
 } // namespace frontend
 } // namespace onnx2mlir
 
-#endif // ONNX2MLIR_FRONTEND_ONNX_HPP_
+#endif // INCLUDE_ONNX2MLIR_FRONTEND_ONNX_HPP_
