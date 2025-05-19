@@ -27,7 +27,10 @@
  *
  */
 
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/Complex/IR/Complex.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/SparseTensor/IR/SparseTensor.h>
 #include <mlir/IR/AsmState.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Verifier.h>
@@ -163,9 +166,15 @@ static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
 
   if (tensor.has_raw_data()) {
     switch (tensor.data_type()) {
-    case onnx::TensorProto::FLOAT16:
-    case onnx::TensorProto::FLOAT:
     case onnx::TensorProto::DOUBLE:
+    case onnx::TensorProto::FLOAT:
+    case onnx::TensorProto::FLOAT16:
+    case onnx::TensorProto::BFLOAT16:
+    case onnx::TensorProto::FLOAT8E4M3FN:
+    case onnx::TensorProto::FLOAT8E4M3FNUZ:
+    case onnx::TensorProto::FLOAT8E5M2:
+    case onnx::TensorProto::FLOAT8E5M2FNUZ:
+    case onnx::TensorProto::FLOAT4E2M1:
     case onnx::TensorProto::BOOL:
     case onnx::TensorProto::INT4:
     case onnx::TensorProto::INT8:
@@ -177,6 +186,8 @@ static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
     case onnx::TensorProto::UINT16:
     case onnx::TensorProto::UINT32:
     case onnx::TensorProto::UINT64:
+    case onnx::TensorProto::COMPLEX64:
+    case onnx::TensorProto::COMPLEX128:
       return getMlirTensor(tensor.raw_data(), tensor.dims(), dType, eAttr);
     default:
       llvm::errs() << "ERROR: Raw data read not supported for this type.\n";
@@ -213,35 +224,136 @@ static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
   return nullptr;
 }
 
+static mlir::sparse_tensor::SparseTensorEncodingAttr
+getCOOEncoding(const size_t &rank, mlir::MLIRContext *ctx) {
+  // COO type
+  mlir::SmallVector<mlir::sparse_tensor::LevelType> dimTypes;
+  for (size_t i = 0; i < rank; ++i) {
+    auto lvl = mlir::sparse_tensor::LevelType(
+        mlir::sparse_tensor::LevelFormat::Compressed);
+    dimTypes.push_back(lvl);
+  }
+  // identity affine map
+  // (d0, d1, ...) -> (d0, d1, ...)
+  mlir::SmallVector<mlir::AffineExpr> idResults;
+  for (size_t i = 0; i < rank; ++i) {
+    idResults.push_back(mlir::getAffineDimExpr(i, ctx));
+  }
+  auto dimToLvlOrderingMap = mlir::AffineMap::get(rank, 0, idResults, ctx);
+  // lvl-to-dim map (inverse of dimToLvl)
+  // if dimToLvl is identity, lvlToDim is also identity.
+  auto lvlToDimOrderingMap = dimToLvlOrderingMap;
+
+  return mlir::sparse_tensor::SparseTensorEncodingAttr::get(
+      ctx, dimTypes, dimToLvlOrderingMap, lvlToDimOrderingMap,
+      0, // point bitWidth (0 = auto)
+      0, // coord bitWidth (0 = auto)
+      {}, {});
+}
+
+static mlir::ElementsAttr
+OnnxToMlir_SparseTensor(const onnx::SparseTensorProto &tensor,
+                        mlir::MLIRContext *ctx,
+                        const mlir::Attribute &eAttr = {}) {
+
+  auto valAttr = OnnxToMlir_Tensor(tensor.values(), ctx);
+  auto indAttr = OnnxToMlir_Tensor(tensor.indices(), ctx);
+  auto valType = mlir::cast<mlir::RankedTensorType>(valAttr.getType());
+  auto indType = mlir::cast<mlir::RankedTensorType>(indAttr.getType());
+
+  int64_t nnz = valType.getShape()[0];
+  int64_t rank = indType.getShape()[1];
+
+  if (!valType || valType.getRank() != 1) {
+    llvm::errs() << "ERROR: sparse values must be a 1D tensor.\n";
+    exit(-1);
+  }
+
+  if (!indType || indType.getRank() != 2) {
+    llvm::errs() << "ERROR: sparse indices must be a 2D tensor.\n";
+    exit(-1);
+  }
+
+  if (!valType || valType.getRank() != 1) {
+    llvm::errs() << "ERROR: sparse values must be a 1D tensor.\n";
+    exit(-1);
+  }
+
+  if (nnz != indType.getShape()[0]) {
+    llvm::errs() << "ERROR: Number of sparse values (" << nnz
+                 << ") does not match number of sparse index rows ("
+                 << indType.getShape()[0] << ").\n";
+    exit(-1);
+  }
+
+  // dense shape inferrence
+  std::vector<int64_t> denseShape(rank, 0);
+  auto indexValues = indAttr.getValues<int64_t>();
+  // max index for each dim
+  for (int64_t i = 0; i < nnz; ++i) {
+    for (int64_t j = 0; j < rank; ++j) {
+      int64_t currentIndex = indexValues[i * rank + j] + 1;
+      if (currentIndex >= denseShape[j]) {
+        denseShape[j] = currentIndex;
+      }
+    }
+  }
+
+  auto encCOO = getCOOEncoding(rank, ctx);
+
+  auto sparseTensorType =
+      mlir::RankedTensorType::get(denseShape, valType.getElementType(), encCOO);
+
+  auto sparseAttr = mlir::SparseElementsAttr::get(
+      sparseTensorType, mlir::cast<mlir::DenseElementsAttr>(valAttr),
+      mlir::cast<mlir::DenseElementsAttr>(indAttr));
+
+  sparseAttr.print(llvm::outs());
+
+  return sparseAttr;
+}
+
+template <typename dat_T>
+static std::vector<int64_t> OnnxToMlir_Shape(dat_T &tensor_type) {
+  std::vector<int64_t> dataShape;
+  //    const auto &tensor_type = type_proto.tensor_type();
+  // extract shape
+  if (tensor_type.has_shape()) {
+    for (int i = 0; i < tensor_type.shape().dim_size(); ++i) {
+      const auto &dim = tensor_type.shape().dim(i);
+      if (dim.has_dim_value()) {
+        dataShape.push_back(dim.dim_value());
+      } else if (dim.has_dim_param()) {
+        dataShape.push_back(mlir::ShapedType::kDynamic);
+      } else {
+        llvm::errs() << "ERROR: Tensor has invalid dimension.\n";
+        exit(-1);
+      }
+    }
+  } else {
+    llvm::errs() << "ERROR: Tensor has no shape.\n";
+    exit(-1);
+  }
+  return dataShape;
+}
+
 static mlir::Type OnnxToMlir_Type(const onnx::ValueInfoProto &value_proto,
                                   mlir::MLIRContext *ctx) {
   const auto &type_proto = value_proto.type();
-
   // value data type
   switch (type_proto.value_case()) {
-  case onnx::TypeProto::kTensorType:
-  case onnx::TypeProto::kSparseTensorType: {
-    std::vector<int64_t> dataShape;
+  case onnx::TypeProto::kTensorType: {
     const auto &tensor_type = type_proto.tensor_type();
     auto elemType = OnnxToMlir_dType(tensor_type.elem_type(), ctx);
-
-    if (tensor_type.has_shape()) {
-      for (int i = 0; i < tensor_type.shape().dim_size(); ++i) {
-        const auto &dim = tensor_type.shape().dim(i);
-        if (dim.has_dim_value()) {
-          dataShape.push_back(dim.dim_value());
-        } else if (dim.has_dim_param()) {
-          dataShape.push_back(mlir::ShapedType::kDynamic);
-        } else {
-          llvm::errs() << "ERROR: Tensor has invalid dimension.\n";
-          exit(-1);
-        }
-      }
-    } else {
-      llvm::errs() << "ERROR: Tensor has no shape.\n";
-      exit(-1);
-    }
+    const auto dataShape = OnnxToMlir_Shape(type_proto.tensor_type());
     return mlir::RankedTensorType::get(dataShape, elemType);
+  }
+  case onnx::TypeProto::kSparseTensorType: {
+    const auto &tensor_type = type_proto.sparse_tensor_type();
+    const auto denseShape = OnnxToMlir_Shape(tensor_type);
+    auto dType = OnnxToMlir_dType(tensor_type.elem_type(), ctx);
+    auto encCOO = getCOOEncoding(/*rank*/ denseShape.size(), ctx);
+    return mlir::RankedTensorType::get(denseShape, dType, encCOO);
   }
   case onnx::TypeProto::kSequenceType:
   case onnx::TypeProto::kMapType:
@@ -271,6 +383,10 @@ OnnxToMlir_Attr(const onnx::AttributeProto &attribute, mlir::MLIRContext *ctx,
   case onnx::AttributeProto::STRING:
     return mlir::NamedAttribute(attribute.name(),
                                 mlir::StringAttr::get(ctx, attribute.s()));
+  case onnx::AttributeProto::SPARSE_TENSOR:
+    return mlir::NamedAttribute(
+        attribute.name(),
+        OnnxToMlir_SparseTensor(attribute.sparse_tensor(), ctx, eAttr));
   case onnx::AttributeProto::TENSOR:
     return mlir::NamedAttribute(attribute.name(),
                                 OnnxToMlir_Tensor(attribute.t(), ctx, eAttr));
@@ -286,6 +402,10 @@ OnnxToMlir_Attr(const onnx::AttributeProto &attribute, mlir::MLIRContext *ctx,
   case onnx::AttributeProto::STRINGS:
     return mlir::NamedAttribute(attribute.name(),
                                 getMlirArray(ctx, attribute.strings()));
+  case onnx::AttributeProto::SPARSE_TENSORS:
+    llvm::errs()
+        << "ERROR: Parsing SPARSE_TENSORS attribute type is not implemented.\n";
+    exit(-1);
   case onnx::AttributeProto::TENSORS: {
     llvm::SmallVector<mlir::Attribute> attrVec;
     for (int i = 0; i < attribute.tensors_size(); ++i)
@@ -297,14 +417,6 @@ OnnxToMlir_Attr(const onnx::AttributeProto &attribute, mlir::MLIRContext *ctx,
     llvm::errs()
         << "ERROR: Parsing GRAPHS attribute type is not implemented.\n";
     exit(-1);
-  case onnx::AttributeProto::SPARSE_TENSOR:
-    // TODO
-    break;
-  case onnx::AttributeProto::SPARSE_TENSORS:
-    // TODO
-    for (int i = 0; i < attribute.sparse_tensors_size(); ++i) {
-    }
-    break;
   case onnx::AttributeProto::TYPE_PROTO:
     llvm::errs()
         << "ERROR: Parsing TYPE_PROTO attribute type is not implemented.\n";
@@ -381,7 +493,9 @@ namespace onnx2mlir::frontend {
 
 ONNXImporter::ONNXImporter() {
   // context setup
-  mlirCtx->loadDialect<mlir::func::FuncDialect,
+  mlirCtx->loadDialect<mlir::affine::AffineDialect, mlir::func::FuncDialect,
+                       mlir::complex::ComplexDialect,
+                       mlir::sparse_tensor::SparseTensorDialect,
                        onnx2mlir::dialect::onnx::OnnxDialect>();
   mlirCtx->disableMultithreading();
   // initialize the module
@@ -464,8 +578,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
       attrs.push_back(label);
       // result type
       auto types = std::vector<mlir::Type>(
-          {mlir::dyn_cast<mlir::DenseElementsAttr>(attr->getValue())
-               .getType()});
+          {mlir::dyn_cast<mlir::ElementsAttr>(attr->getValue()).getType()});
 
       auto op = createOnnxOp(builder, "Constant", types, {}, attrs);
 
@@ -728,8 +841,10 @@ void ONNXImporter::import(const std::string &filepath) {
   llvm::outs() << "\n";
 
   /// convert model
-  auto model_proto =
-      onnx::version_conversion::ConvertVersion(model_import, last_op_version);
+  //  auto model_proto =
+  //      onnx::version_conversion::ConvertVersion(model_import,
+  //      last_op_version);
+  auto model_proto = model_import;
   /// infer shapes
   onnx::shape_inference::InferShapes(model_proto);
 
