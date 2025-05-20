@@ -853,8 +853,6 @@ void ONNXImporter::import(const std::string &filepath) {
   llvm::outs() << "\n";
   llvm::outs() << "Model path: " << filepath << "\n";
   llvm::outs() << "Model IR version: " << model_import.ir_version() << "\n";
-  llvm::outs() << "Model OPset version: " << model_opset_version << "\n";
-  llvm::outs() << "\n";
 
   /// convert model
   onnx::ModelProto model_proto;
@@ -862,6 +860,10 @@ void ONNXImporter::import(const std::string &filepath) {
     int convert_version = engine_opset_version;
     if (opt_args["--onnx-convert-ops"].size() > 0)
       convert_version = std::stoi(opt_args["--onnx-convert-ops"]);
+    if (convert_version <= model_opset_version) {
+      llvm::errs() << "ERROR: Model cannot be downgraded.\n";
+      exit(-1);
+    }
     llvm::outs() << "Model OPSET conversion: " << model_opset_version << " -> "
                  << convert_version << "\n";
     try {
@@ -869,17 +871,18 @@ void ONNXImporter::import(const std::string &filepath) {
                                                              convert_version);
       model_opset_version = convert_version;
     } catch (const std::exception &e) {
-      llvm::errs() << "ERROR: Conversion failure [" << e.what() << "]\n";
-      exit(-1);
     }
   } else {
     model_proto = model_import;
   }
+  llvm::outs() << "Model OPset version: " << model_opset_version << "\n";
 
   /// infer shapes
   onnx::shape_inference::InferShapes(model_proto);
 
   const onnx::GraphProto &graph_proto = model_proto.graph();
+
+  llvm::outs() << "\n";
   llvm::outs() << "Graph Name: " << graph_proto.name() << "\n";
 
   /*

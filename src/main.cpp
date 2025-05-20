@@ -55,12 +55,14 @@ int main(int argc, char **argv) {
         printUsage();
         exit(0);
       } else if (arg == "--onnx-convert-ops") {
-        bool isDigitsOnly = std::regex_match(argv[i + 1], std::regex(R"(\d+)"));
-        if (isDigitsOnly) {
-          options[argv[i]] = argv[i + 1];
-          i++;
-        } else {
-          options[argv[i]] = "";
+        options[argv[i]] = "";
+        if ((i + 1) < argc) {
+          bool isDigitsOnly =
+              std::regex_match(argv[i + 1], std::regex(R"(\d+)"));
+          if (isDigitsOnly) {
+            options[argv[i]] = argv[i + 1];
+            i++;
+          }
         }
         continue;
       } else {
