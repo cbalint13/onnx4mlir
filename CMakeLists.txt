@@ -46,32 +46,4 @@ include_directories(${PROJECT_BINARY_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
-
-add_subdirectory(src/dialect/onnx)
-
-
-set(SOURCE_IMPORTER_FRONTENDS
-  src/frontend/importers/onnx.cpp
-)
-set(SOURCE_CONVERTER_FRONTENDS
-  src/frontend/converters/onnx.cpp
-)
-add_library(frontends OBJECT
-  ${SOURCE_IMPORTER_FRONTENDS}
-  ${SOURCE_CONVERTER_FRONTENDS}
-)
-target_link_libraries(frontends
-  PRIVATE
-    onnx2mlir_onnx_dialect
-  PUBLIC
-    ONNX::onnx
-)
-
-add_executable(onnx2mlir src/main.cpp)
-target_link_libraries(onnx2mlir
-  PRIVATE
-    frontends
-  PUBLIC
-    LLVM
-    MLIR
-)
+add_subdirectory(src)
