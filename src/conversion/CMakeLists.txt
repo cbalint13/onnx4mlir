@@ -3,7 +3,7 @@ mlir_tablegen(Passes.h.inc -gen-pass-decls -name Conversion)
 add_public_tablegen_target(MLIRConversionPassIncGen)
 add_mlir_doc(Passes ConversionPasses ./ -gen-pass-doc)
 
-add_definitions(-DONNX_NAMESPACE=onnx)
+add_definitions(-DONNX_NAMESPACE=onnx -DONNX_ML=${ONNX_USE_ML})
 
 # Onnx dialect library
 add_mlir_conversion_library(onnx2mlir_onnx_linalg_pass

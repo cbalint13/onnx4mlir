@@ -30,7 +30,7 @@
 #ifndef INCLUDE_ONNX2MLIR_COMMON_ONNX_HPP_
 #define INCLUDE_ONNX2MLIR_COMMON_ONNX_HPP_
 
-#include "onnx/onnx.pb.h"
+#include "onnx/onnx_pb.h"
 
 static inline mlir::Type OnnxToMlir_dType(const int32_t data_type_int,
                                           mlir::MLIRContext *ctx) {

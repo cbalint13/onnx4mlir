@@ -1,6 +1,6 @@
 /********************************************************
  *   ONNX version [1.19.0]                              *
- *   Generated at [2025-05-20 16:19:11.132233]          *
+ *   Generated at [2025-06-10 02:34:33.627907]          *
  ********************************************************/
 
 /// Adagrad [v1]
@@ -2540,7 +2540,7 @@ def Onnx_Mod_V10Op : Onnx_Op<"Mod_V10", [Pure, OPCountInfo]> {
 def Onnx_ModOp : Onnx_Op<"Mod", [Pure, OPCountInfo]> {
   let summary = "ONNX Mod operation [v13]";
   let description = [{
-      Performs element-wise binary modulus (with Numpy-style broadcasting support).
+      Performs an element-wise binary modulo operation.
   }];
 
   let arguments = (ins AnyTypeOf<[TensorOf<[UI8]>, TensorOf<[UI16]>, TensorOf<[UI32]>, TensorOf<[UI64]>, TensorOf<[I8]>, TensorOf<[I16]>, TensorOf<[I32]>, TensorOf<[I64]>, TensorOf<[F16]>, TensorOf<[F32]>, TensorOf<[F64]>, TensorOf<[BF16]>]>:$A,
