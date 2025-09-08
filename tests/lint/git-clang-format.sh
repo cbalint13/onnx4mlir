@@ -3,7 +3,6 @@
 apply=false
 quiet=false
 style="LLVM"
-filepath=""
 
 for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_to_linalg'); do
 
@@ -25,6 +24,10 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
   fi
   rm -rf /tmp/$filename.???
   popd > /dev/null
-  cpplint --filter=-whitespace/comments,-whitespace/indent $f
+
+  flt="+readability/missing-final-newline,"
+  flt+="-whitespace/comments,"
+  flt+="-whitespace/indent"
+  cpplint --filter=${flt} $f
 
 done
