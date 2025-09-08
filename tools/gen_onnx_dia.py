@@ -196,7 +196,7 @@ def main():
 
     # definition
     inc.write(f'\n')
-    inc.write(f'/// {schema.name} [v{schema.since_version}]\n')
+    inc.write(f'// {schema.name} [v{schema.since_version}]\n')
     inc.write(f'def Onnx_{opname}Op : Onnx_Op<"{opname}", [{opinterfaces}]> {{\n')
     inc.write(f'  let summary = "ONNX {opname} operation [v{schema.since_version}]";\n')
     inc.write(f'  let description = [{{\n')

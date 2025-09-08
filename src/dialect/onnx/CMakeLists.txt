@@ -23,7 +23,7 @@ if(BUILD_PYTHON_BINDINGS)
   add_public_tablegen_target(MLIROnnxPythonIncGen)
 
   # change to global python mlir path
-  set(OUTPUT_PY_PATH "${CMAKE_BINARY_DIR}/python/dialect")
+  set(OUTPUT_PY_PATH "${CMAKE_BINARY_DIR}/python/onnx2mlir/dialect")
   set(TBLGEN_PY_FILE "${CMAKE_CURRENT_BINARY_DIR}/Onnx.py.inc")
   add_custom_command(
     OUTPUT "${OUTPUT_PY_PATH}/onnx.py"

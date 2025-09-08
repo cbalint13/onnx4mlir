@@ -43,11 +43,11 @@ static void printUsage() {
 }
 
 int main(int argc, char **argv) {
-  /// command-line params
+  // command-line params
   std::string ONNXFilename = "";
   std::map<std::string, std::string> options;
 
-  /// command-line parser
+  // command-line parser
   for (int i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
       const auto &arg = std::string(argv[i]);

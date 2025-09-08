@@ -33,7 +33,7 @@
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-/// Onnx operator
+// Onnx operator
 class Onnx_Op<string mnemonic, list<Trait> traits>
     : Op<Onnx_Dialect, mnemonic, traits #[NoMemoryEffect]>;
 

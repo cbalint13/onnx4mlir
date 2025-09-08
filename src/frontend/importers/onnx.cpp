@@ -118,6 +118,9 @@ static mlir::ElementsAttr OnnxToMlir_Tensor(const onnx::TensorProto &tensor,
     case onnx::TensorProto::FLOAT8E4M3FNUZ:
     case onnx::TensorProto::FLOAT8E5M2:
     case onnx::TensorProto::FLOAT8E5M2FNUZ:
+#if ONNX2MLIR_ONNX_VERSION >= 120
+    case onnx::TensorProto::FLOAT8E8M0:
+#endif
     case onnx::TensorProto::FLOAT4E2M1:
     case onnx::TensorProto::BOOL:
     case onnx::TensorProto::INT4:
@@ -772,7 +775,7 @@ void ONNXImporter::import(const std::string &filepath) {
     exit(-1);
   }
 
-  /// parse onnx binary
+  // parse onnx binary
   onnx::ModelProto model_import;
   if (!model_import.ParseFromIstream(&model_file)) {
     llvm::errs() << "ERROR: ONNX model file parsing error.\n";
@@ -780,7 +783,7 @@ void ONNXImporter::import(const std::string &filepath) {
   }
 
   model_opset_version = -1;
-  /// see https://github.com/onnx/onnx/blob/main/onnx/docs/Versioning.md
+  // see https://github.com/onnx/onnx/blob/main/onnx/docs/Versioning.md
   for (auto it = model_import.opset_import().begin();
        it != model_import.opset_import().end(); ++it) {
     if (it->domain() == "" || it->domain() == "ai.onnx") {
@@ -793,7 +796,7 @@ void ONNXImporter::import(const std::string &filepath) {
   llvm::outs() << "Model path: " << filepath << "\n";
   llvm::outs() << "Model IR version: " << model_import.ir_version() << "\n";
 
-  /// convert model
+  // convert model
   onnx::ModelProto model_proto;
   if (opt_args.count("--onnx-convert-ops") > 0) {
     int convert_version = engine_opset_version;
@@ -816,7 +819,7 @@ void ONNXImporter::import(const std::string &filepath) {
   }
   llvm::outs() << "Model OPset version: " << model_opset_version << "\n";
 
-  /// infer shapes
+  // infer shapes
   onnx::shape_inference::InferShapes(model_proto);
 
   const onnx::GraphProto &graph_proto = model_proto.graph();

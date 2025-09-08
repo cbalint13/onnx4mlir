@@ -39,7 +39,7 @@
 
 namespace onnx2mlir::dialect::onnx {
 
-/// Parse an attribute registered to this dialect.
+// Parse an attribute registered to this dialect.
 mlir::Attribute OnnxDialect::parseAttribute(mlir::DialectAsmParser &parser,
                                             mlir::Type type) const {
   printf("\n\nPARSEEER\n\n");
@@ -65,7 +65,7 @@ mlir::Attribute OnnxDialect::parseAttribute(mlir::DialectAsmParser &parser,
   return {};
 }
 
-/// Print an attribute registered to this dialect.
+// Print an attribute registered to this dialect.
 void OnnxDialect::printAttribute(mlir::Attribute attr,
                                  mlir::DialectAsmPrinter &printer) const {
   printf("\n\nPARINTED\n\n");
