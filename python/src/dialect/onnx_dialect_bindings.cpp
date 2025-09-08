@@ -23,17 +23,21 @@
  *****************************************************************************/
 
 /*!
- * \file include/onnx2mlir/dialect/onnx/Onnx.hpp
- * \brief Onnx dialect related declarations
+ * \file python/src/dialect/onnx_dialect_bindings.cpp
+ * \brief Onnx passes bindings to python
  */
+#include <mlir-c/IR.h>
+#include <mlir/Bindings/Python/PybindAdaptors.h>
+#include <mlir/CAPI/Registration.h>
+#include <mlir/IR/Dialect.h>
 
-#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNX_HPP_
-#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNX_HPP_
+#include "onnx2mlir/dialect/onnx/Onnx.hpp"
 
-#include "onnx2mlir/dialect/onnx/OnnxAttrs.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxInterface.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxOps.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxTypes.hpp"
+PYBIND11_MODULE(_onnx2mlirDialectsOnnx, m) {
+  m.doc() = "ONNX dialect python bindings";
 
-#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNX_HPP_
+  m.def("register_onnx_dialect", [](MlirContext context) {
+    mlir::MLIRContext *cppContext = unwrap(context);
+    cppContext->loadDialect<onnx2mlir::dialect::onnx::OnnxDialect>();
+  });
+}

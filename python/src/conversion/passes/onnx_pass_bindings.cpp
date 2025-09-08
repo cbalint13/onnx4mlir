@@ -32,7 +32,7 @@
 
 #include "onnx2mlir/conversion/onnx_passes.hpp"
 
-PYBIND11_MODULE(_onnx2mlir_onnx_passes, m) {
+PYBIND11_MODULE(_onnx2mlirPassesOnnx, m) {
   m.doc() = "Python bindings for Onnx2Mlir ONNX passes.";
 
   // Register ONNX passes on load.

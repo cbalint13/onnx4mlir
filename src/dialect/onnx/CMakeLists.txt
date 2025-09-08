@@ -40,7 +40,6 @@ if(BUILD_PYTHON_BINDINGS)
   )
 
   add_dependencies(mlir-headers MLIROnnxPythonIncGen generate_onnx_py_bindings)
-
 endif()
 
 add_mlir_doc(OnnxDialect OnnxDialect onnx/ -gen-dialect-doc)
