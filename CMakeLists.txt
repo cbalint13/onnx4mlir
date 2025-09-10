@@ -97,6 +97,5 @@ endif()
 
 if(BUILD_TESTING)
   find_program(PYTEST_EXECUTABLE pytest REQUIRED)
-  enable_testing()
   add_subdirectory(tests)
 endif()
