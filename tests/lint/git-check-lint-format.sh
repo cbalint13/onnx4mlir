@@ -4,9 +4,36 @@ apply=false
 quiet=false
 style="LLVM"
 
-##
-## C/C++
-##
+while [ "$1" != "" ]; do
+  case "$1" in
+    --apply | -a)
+      apply=true
+      ;;
+    --quiet | -q)
+      quiet=true
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if ! command -v clang-format &> /dev/null; then
+  echo "ERROR: clang-format is not installed."
+  exit 1
+fi
+
+if ! command -v cpplint &> /dev/null; then
+  echo "ERROR: cpplint is not installed."
+  exit 1
+fi
+
+if ! command -v black &> /dev/null; then
+  echo "ERROR: black is not installed."
+  exit 1
+fi
 
 for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_to_linalg'); do
 
@@ -15,20 +42,15 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
     echo "Analysing: [$f]"
   fi
 
-  filename="$(basename -- $f)"
-  pathname="$(dirname -- $f)"
-
   ##
   ## clang-format
   ##
 
-  pushd $pathname > /dev/null
-  cdiff=`git diff --no-index --color -- "$filename" <(clang-format --style=$style "$filename")`
-  if [[ -n "$cdiff" && "$apply" == true ]]; then
-    udiff=`git diff --no-index --no-color -- "$filename" <(clang-format --style=$style "$filename")`
-    echo "$udiff" | patch -p1
+  cdiff=`git diff --no-index --color -- $f <(clang-format --style=$style $f)`
+  if [[ -n "$cdiff" && $apply == true ]]; then
+    clang-format -i --style=$style $f
+    echo "Formatted: [$f]"
   fi
-  popd > /dev/null
 
   ##
   ## cpplint
@@ -37,12 +59,9 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
   flt="-whitespace/indent,"
   flt+="-whitespace/comments,"
   flt+="+readability/missing-final-newline"
-  clint=`cpplint --quiet --filter=${flt} "$f" 2>&1`
+  clint=`cpplint --quiet --filter=${flt} $f 2>&1`
 
-  ##
-  ## display errors
-  ##
-
+  # display errors
   if [[ -n "$cdiff" || -n "$clint" ]]; then
     echo
     echo -e "------->>>--[\e[32m$f\e[0m]-->>>---------"
@@ -54,9 +73,10 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
 
 done
 
-##
-## Python
-##
+if ! which black &> /dev/null; then
+  echo "ERROR: black is installed."
+  exit 1
+fi
 
 for f in $(git ls-files -- '*.py'); do
 
@@ -65,17 +85,17 @@ for f in $(git ls-files -- '*.py'); do
     echo "Analysing: [$f]"
   fi
 
-  filename="$(basename -- $f)"
-  pathname="$(dirname -- $f)"
+  ##
+  ## black
+  ##
 
-  pushd $pathname > /dev/null
-  pdiff=`black --quiet --check --color --diff "$filename"`
-  if [[ -n "$pdiff" && "$apply" == true ]]; then
-    udiff=`black --quiet --check --diff "$filename"`
-    echo "$udiff" | patch -p1
+  pdiff=`black --quiet --check --color --diff $f`
+  if [[ -n "$pdiff" && $apply == true ]]; then
+    black --quiet $f
+    echo "Formatted: [$f]"
   fi
-  popd > /dev/null
 
+  # display errors
   if [[ -n "$pdiff" ]]; then
     echo
     echo -e "------->>>--[\e[32m$f\e[0m]-->>>---------"
@@ -85,3 +105,5 @@ for f in $(git ls-files -- '*.py'); do
   fi
 
 done
+
+exit 0
