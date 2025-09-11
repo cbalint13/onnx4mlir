@@ -24,7 +24,7 @@
 
 /*!
  * \file python/src/conversion/passes/onnx_pass_bindings.cpp
- * \brief Onnx passes bindings to python
+ * \brief Python bindings for ONNX passes
  */
 
 #include <mlir/Bindings/Python/PybindAdaptors.h>
@@ -33,7 +33,7 @@
 #include "onnx2mlir/conversion/onnx_passes.hpp"
 
 PYBIND11_MODULE(_onnx2mlirOnnxPasses, m) {
-  m.doc() = "Python bindings for Onnx2Mlir ONNX passes.";
+  m.doc() = "Python bindings for ONNX passes";
 
   m.def("register_onnx_to_linag_pass",
         []() { onnx2mlir::dialect::registerLowerONNXToLINALGPass(); });

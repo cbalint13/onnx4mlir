@@ -4,6 +4,10 @@ apply=false
 quiet=false
 style="LLVM"
 
+##
+## C/C++
+##
+
 for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_to_linalg'); do
 
   if [ $quiet == false ];
@@ -22,7 +26,7 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
   cdiff=`git diff --no-index --color -- "$filename" <(clang-format --style=$style "$filename")`
   if [[ -n "$cdiff" && "$apply" == true ]]; then
     udiff=`git diff --no-index --no-color -- "$filename" <(clang-format --style=$style "$filename")`
-    echo "udiff" | patch -p1
+    echo "$udiff" | patch -p1
   fi
   popd > /dev/null
 
@@ -44,6 +48,38 @@ for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_t
     echo -e "------->>>--[\e[32m$f\e[0m]-->>>---------"
     echo "$cdiff" | tail -n +5
     echo "$clint"
+    echo -e "-------<<<--[\e[32m$f\e[0m]--<<<---------"
+    echo
+  fi
+
+done
+
+##
+## Python
+##
+
+for f in $(git ls-files -- '*.py'); do
+
+  if [ $quiet == false ];
+  then
+    echo "Analysing: [$f]"
+  fi
+
+  filename="$(basename -- $f)"
+  pathname="$(dirname -- $f)"
+
+  pushd $pathname > /dev/null
+  pdiff=`black --quiet --check --color --diff "$filename"`
+  if [[ -n "$pdiff" && "$apply" == true ]]; then
+    udiff=`black --quiet --check --diff "$filename"`
+    echo "$udiff" | patch -p1
+  fi
+  popd > /dev/null
+
+  if [[ -n "$pdiff" ]]; then
+    echo
+    echo -e "------->>>--[\e[32m$f\e[0m]-->>>---------"
+    echo "$pdiff" | tail -n +2
     echo -e "-------<<<--[\e[32m$f\e[0m]--<<<---------"
     echo
   fi

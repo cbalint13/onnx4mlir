@@ -122,7 +122,7 @@ add_custom_target(docs
 
 # lint
 add_custom_target(lint
-  COMMAND env sh tests/lint/git-clang-format.sh
+  COMMAND env sh tests/lint/git-check-lint-format.sh
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Running code format check..."
 )

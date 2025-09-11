@@ -24,8 +24,9 @@
 
 /*!
  * \file python/src/dialect/onnx_dialect_bindings.cpp
- * \brief Onnx passes bindings to python
+ * \brief Python bindings for the ONNX dialect
  */
+
 #include <mlir-c/IR.h>
 #include <mlir/Bindings/Python/PybindAdaptors.h>
 #include <mlir/CAPI/Registration.h>
@@ -34,7 +35,7 @@
 #include "onnx2mlir/dialect/onnx/Onnx.hpp"
 
 PYBIND11_MODULE(_onnx2mlirDialectsOnnx, m) {
-  m.doc() = "ONNX dialect python bindings";
+  m.doc() = "Python bindings for the ONNX dialect";
 
   m.def("register_onnx_dialect", [](MlirContext context) {
     mlir::MLIRContext *cppContext = unwrap(context);
