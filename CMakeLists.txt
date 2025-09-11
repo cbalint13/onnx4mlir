@@ -106,11 +106,6 @@ if(BUILD_PYTHON_BINDINGS)
   add_subdirectory(python)
 endif()
 
-if(BUILD_TESTING)
-  find_program(PYTEST_EXECUTABLE pytest REQUIRED)
-  add_subdirectory(tests)
-endif()
-
 # docs
 add_custom_target(docs
   DEPENDS
@@ -124,3 +119,15 @@ add_custom_target(docs
     ConversionPassesDocGen
   COMMENT "Build docs"
 )
+
+# lint
+add_custom_target(lint
+  COMMAND env sh tests/lint/git-clang-format.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Running code format check..."
+)
+
+if(BUILD_TESTING)
+  find_program(PYTEST_EXECUTABLE pytest REQUIRED)
+  add_subdirectory(tests)
+endif()
