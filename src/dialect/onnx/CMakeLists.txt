@@ -39,7 +39,7 @@ if(BUILD_PYTHON_BINDINGS)
     COMMAND
       echo "from . import onnx" > __init__.py
     COMMAND
-      echo "from ._onnx2mlirDialectsOnnx import register_onnx_dialect" >> __init__.py
+      echo "from ._onnx2mlirDialectsOnnx import *" >> __init__.py
     COMMAND
       echo "__all__ = ['onnx', 'register_onnx_dialect']" >> __init__.py
     COMMAND

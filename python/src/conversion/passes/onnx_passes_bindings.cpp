@@ -32,14 +32,9 @@
 
 #include "onnx2mlir/conversion/onnx_passes.hpp"
 
-PYBIND11_MODULE(_onnx2mlirPassesOnnx, m) {
+PYBIND11_MODULE(_onnx2mlirOnnxPasses, m) {
   m.doc() = "Python bindings for Onnx2Mlir ONNX passes.";
 
-  // Register ONNX passes on load.
-  onnx2mlir::dialect::registerLowerONNXToLINALGPass();
-
-//  m.def("register_onnx_to_linag", [](MlirContext context) {
-//    mlir::MLIRContext *cppContext = unwrap(context);
-//    cppContext->loadDialect<onnx2mlir::dialect::onnx::OnnxDialect>();
-//  });
+  m.def("register_onnx_to_linag_pass",
+        []() { onnx2mlir::dialect::registerLowerONNXToLINALGPass(); });
 }

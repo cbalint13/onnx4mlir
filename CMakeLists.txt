@@ -14,7 +14,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "CMake build type is: ${CMAKE_BUILD_TYPE}")
 
-if(BUILD_SHARED_LIB)
+if(BUILD_SHARED_LIBS)
   message(STATUS "Building SHARED libraries")
 else()
   message(STATUS "Building STATIC libraries")

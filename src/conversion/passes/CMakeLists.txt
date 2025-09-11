@@ -7,6 +7,8 @@ if(BUILD_PYTHON_BINDINGS)
     OUTPUT "${OUTPUT_PY_PATH}/__init__.py"
     COMMAND
       echo "from ._onnx2mlirOnnxPasses import *" > __init__.py
+    COMMAND
+      echo "__all__ = ['register_onnx_to_linag_pass']" >> __init__.py
     WORKING_DIRECTORY ${PY_OUTPUT_PATH}
     COMMENT "Update ConversionPasses python bindings"
   )
