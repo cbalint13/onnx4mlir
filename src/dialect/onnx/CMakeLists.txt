@@ -10,20 +10,20 @@ mlir_tablegen(OnnxAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=onnx)
 mlir_tablegen(OnnxAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=onnx)
 add_public_tablegen_target(MLIROnnxIncGen)
 
-# Onnx tablegen interface
-set(LLVM_TARGET_DEFINITIONS OnnxInterface.td)
-mlir_tablegen(OnnxInterface.h.inc -gen-op-interface-decls)
-mlir_tablegen(OnnxInterface.cpp.inc -gen-op-interface-defs)
-add_public_tablegen_target(MLIROnnxInterfaceIncGen)
+# Onnx tablegen interfaces
+set(LLVM_TARGET_DEFINITIONS OnnxInterfaces.td)
+mlir_tablegen(OnnxInterfaces.h.inc -gen-op-interface-decls)
+mlir_tablegen(OnnxInterfaces.cpp.inc -gen-op-interface-defs)
+add_public_tablegen_target(MLIROnnxInterfacesIncGen)
 
 # Onnx tablegen docs
-add_mlir_doc(OnnxDialect OnnxDialect onnx/ -gen-dialect-doc)
-add_mlir_doc(OnnxOps OnnxOps onnx/ -gen-op-doc)
-add_mlir_doc(OnnxOpsInter OnnxOpsInter onnx/ -gen-op-interface-doc)
-add_mlir_doc(OnnxTypes OnnxTypes onnx/ -gen-typedef-doc)
-add_mlir_doc(OnnxTypesInter OnnxTypesInter onnx/ -gen-type-interface-doc)
-add_mlir_doc(OnnxAttrs OnnxAttrs onnx/ -gen-attrdef-doc)
-add_mlir_doc(OnnxAttrsInter OnnxAttrsInter onnx/ -gen-attr-interface-doc)
+add_mlir_doc(Onnx OnnxDialect onnx/ -gen-dialect-doc)
+add_mlir_doc(Onnx OnnxOps onnx/ -gen-op-doc)
+add_mlir_doc(Onnx OnnxOpsInterfaces onnx/ -gen-op-interface-docs)
+add_mlir_doc(Onnx OnnxTypes onnx/ -gen-typedef-doc)
+add_mlir_doc(Onnx OnnxTypesInterfaces onnx/ -gen-type-interface-docs)
+add_mlir_doc(Onnx OnnxAttrs onnx/ -gen-attrdef-doc)
+add_mlir_doc(Onnx OnnxAttrsInterfaces onnx/ -gen-attr-interface-docs)
 
 # Onnx dialect python gen
 if(BUILD_PYTHON_BINDINGS)
@@ -47,7 +47,7 @@ if(BUILD_PYTHON_BINDINGS)
     WORKING_DIRECTORY ${PY_OUTPUT_PATH}
     COMMENT "Update Onnx.py.inc bindings"
   )
-  add_custom_target(generate_onnx_py_bindings ALL
+  add_custom_target(generate_onnx_py_bindings
     DEPENDS "${OUTPUT_PY_PATH}/onnx.py"
     COMMENT "Finalize onnx.py bindings"
   )
@@ -66,7 +66,7 @@ add_custom_command(
   DEPENDS ${ONNX_MLIR_OPS_GEN}
   COMMENT "Generating ONNX MLIR Ops using gen_onnx_dia.py"
 )
-add_custom_target(generate_onnx_ops ALL
+add_custom_target(generate_onnx_ops
   DEPENDS ${ONNX_MLIR_OPS_INC}
   COMMENT "MLIR ONNX Ops generator"
 )
@@ -77,13 +77,13 @@ add_mlir_dialect_library(onnx2mlir_onnx_dialect
   OBJECT
     ir/onnx_attrs.cpp
     ir/onnx_dialect.cpp
-    ir/onnx_interface.cpp
+    ir/onnx_interfaces.cpp
     ir/onnx_ops.cpp
     ir/onnx_types.cpp
     support/onnx_shapes.cpp
   DEPENDS
     MLIROnnxIncGen
-    MLIROnnxInterfaceIncGen
+    MLIROnnxInterfacesIncGen
   LINK_LIBS PUBLIC
     MLIR
 )

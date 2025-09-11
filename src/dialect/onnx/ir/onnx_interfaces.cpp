@@ -23,15 +23,12 @@
  *****************************************************************************/
 
 /*!
- * \file include/onnx2mlir/dialect/onnx/OnnxInterface.hpp
- * \brief Onnx dialect interfaces declaration
+ * \file src/dialect/onnx/ir/onnx_inerfaces.cpp
+ * \brief Onnx dialect interfaces inplementation
  */
 
-#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
-#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
+#include "onnx2mlir/dialect/onnx/OnnxInterfaces.hpp"
 
-#include <mlir/IR/OpDefinition.h>
+#include "dialect/onnx/OnnxInterfaces.cpp.inc"
 
-#include "dialect/onnx/OnnxInterface.h.inc"
-
-#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACE_HPP_
+namespace onnx2mlir::dialect::onnx {} // namespace onnx2mlir::dialect::onnx

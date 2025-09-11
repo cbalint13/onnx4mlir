@@ -51,7 +51,7 @@
 
 #include "onnx2mlir/common/onnx.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxInterface.hpp"
+#include "onnx2mlir/dialect/onnx/OnnxInterfaces.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxOps.hpp"
 #include "onnx2mlir/frontend/onnx.hpp"
 

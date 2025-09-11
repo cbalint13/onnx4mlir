@@ -70,6 +70,7 @@ if(MLIR_FOUND)
     message(FATAL_ERROR "LLVM/MLIR version 21.0 or greater is required.")
   endif()
   add_definitions(-DONNX2MLIR_MLIR_VERSION=${ONNX2MLIR_MLIR_VERSION})
+  set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror -Wno-comment -Wno-unused-parameter -Wno-unused-but-set-variable -Wno-unused-function")
@@ -100,3 +101,17 @@ if(BUILD_TESTING)
   find_program(PYTEST_EXECUTABLE pytest REQUIRED)
   add_subdirectory(tests)
 endif()
+
+# docs
+add_custom_target(docs
+  DEPENDS
+    OnnxAttrsDocGen
+    OnnxAttrsInterfacesDocGen
+    OnnxDialectDocGen
+    OnnxOpsDocGen
+    OnnxOpsInterfacesDocGen
+    OnnxTypesDocGen
+    OnnxTypesInterfacesDocGen
+    ConversionPassesDocGen
+  COMMENT "Build docs"
+)

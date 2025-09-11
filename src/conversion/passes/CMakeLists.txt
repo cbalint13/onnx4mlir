@@ -6,7 +6,7 @@ add_mlir_conversion_library(onnx2mlir_onnx_linalg_pass
     onnx_to_linalg/constant.cpp
   DEPENDS
     onnx2mlir_onnx_dialect
-    MLIRConversionPassIncGen
+    MLIRConversionPassesIncGen
   LINK_LIBS
     PUBLIC MLIR
 )
