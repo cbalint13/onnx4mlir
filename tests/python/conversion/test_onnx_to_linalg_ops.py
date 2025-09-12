@@ -12,12 +12,43 @@ from mlir.ir import (
     InsertionPoint,
     RankedTensorType,
     DenseElementsAttr,
+    IntegerType,
+    FloatType,
+    F16Type,
     F32Type,
+    F64Type,
 )
 from mlir.passmanager import PassManager
 
 from onnx2mlir.dialect import onnx, register_onnx_dialect
 from onnx2mlir.passes import register_onnx_to_linag_pass
+
+
+def get_mlir_type_from_numpy(np_dtype):
+    np_array = np.array([], dtype=np_dtype)
+    if "int" in str(np_array.dtype):
+        elem_bits = np_array.itemsize * 8
+        if str(np_array.dtype)[0] == "u":
+            elem_type = IntegerType.get_unsigned(elem_bits)
+        else:
+            elem_dtype = IntegerType.get_signless(elem_bits)
+    elif "float16" == str(np_array.dtype):
+        elem_type = F16Type()
+    elif "float32" == str(np_array.dtype):
+        elem_type = F32Type.get()
+    elif "float64" == str(np_array.dtype):
+        elem_type = F64Type.get()
+    else:
+        raise TypeError(f"Unsupported numpy datatype: {np_dtype}")
+    return elem_dtype
+
+
+def get_mlir_rankedtensor_from_numpy(np_array):
+    elem_type = get_mlir_type_from_numpy(np_array.dtype)
+    tensor_type = RankedTensorType.get(
+        shape=np_array.shape, element_type=elem_type, loc=Location.unknown()
+    )
+    return tensor_type, elem_type
 
 
 def test_onnx_ConstantOp_lower():
@@ -28,27 +59,24 @@ def test_onnx_ConstantOp_lower():
     EXPECTED_OUTPUT = textwrap.dedent(
         """
         module {
-          func.func @main() -> tensor<2x2xf32> {
-            %cst = arith.constant dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
-            return %cst : tensor<2x2xf32>
+          func.func @main() -> tensor<2x2xi8> {
+            %cst = arith.constant dense<[[-128, 8], [-9, 127]]> : tensor<2x2xi8>
+            return %cst : tensor<2x2xi8>
           }
         }
         """
     )
 
     def create_mlir_module():
-        """
-        Creates and returns an MLIR module with ONNX operations.
-        """
         with Context() as ctx, Location.unknown() as unk:
             register_onnx_dialect(ctx)
             module = Module.create(unk)
-            f32 = F32Type.get(ctx)
-            tensor_type = RankedTensorType.get(shape=[2, 2], element_type=f32, loc=unk)
-            func_op = func.FuncOp("main", ([], [tensor_type]), loc=unk)
+            np_array = np.array([[-128, 8], [-9, 127]], dtype=np.int8)
+            tensor_type, elem_type = get_mlir_rankedtensor_from_numpy(np_array)
+            func_op = func.FuncOp("main", ([], [tensor_type]))
             with InsertionPoint(func_op.add_entry_block()):
                 tensor_attr = DenseElementsAttr.get(
-                    np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+                    np_array,
                     type=tensor_type,
                     context=ctx,
                 )

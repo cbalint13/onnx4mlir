@@ -48,7 +48,6 @@ add_custom_command(
 )
 add_custom_target(generate_onnx_ops
   DEPENDS ${ONNX_MLIR_OPS_INC}
-  COMMENT "MLIR ONNX Ops generator"
 )
 add_dependencies(MLIROnnxIncGen generate_onnx_ops)
 

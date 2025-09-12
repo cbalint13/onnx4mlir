@@ -36,9 +36,6 @@ def test_onnx_mlir_generation():
     )
 
     def create_mlir_module():
-        """
-        Creates and returns an MLIR module with ONNX operations.
-        """
         with Context() as ctx, Location.unknown() as unk:
             register_onnx_dialect(ctx)
             module = Module.create(unk)
