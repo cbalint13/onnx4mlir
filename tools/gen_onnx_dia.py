@@ -98,13 +98,19 @@ def get_mlir_types_from_str(type_strs, schema_constraints, option=None):
             ", " if idx + 1 < len(attr_constraints) else ""
         )
 
-    if option == onnx.defs.OpSchema.FormalParameterOption.Optional:
+    # Optional absence to NoneType
+    if (option == "NoneType") or (
+        option == defs.OpSchema.FormalParameterOption.Optional
+    ):
         mlir_types += ", NoneType"
 
     if ", " in mlir_types:
         mlir_types = f"AnyTypeOf<[{mlir_types}]>"
 
-    if option == onnx.defs.OpSchema.FormalParameterOption.Variadic:
+    if option == defs.OpSchema.FormalParameterOption.Optional:
+        mlir_types = f"Optional<{mlir_types}>"
+
+    if option == defs.OpSchema.FormalParameterOption.Variadic:
         mlir_types = f"Variadic<{mlir_types}>"
 
     return mlir_types
@@ -199,6 +205,18 @@ def main():
         if schema.name == "Constant":
             opinterfaces += ", ConstantLike"
 
+        if any(
+            inp.option == defs.OpSchema.FormalParameterOption.Optional
+            for inp in schema.inputs
+        ):
+            opinterfaces += ", SameVariadicOperandSize"
+
+        if any(
+            out.option == defs.OpSchema.FormalParameterOption.Optional
+            for out in schema.outputs
+        ):
+            opinterfaces += ", SameVariadicResultSize"
+
         ##
         ## Definition
         ##
@@ -229,32 +247,44 @@ def main():
         ## Arguments
         ##
 
-        inp_names = []
+        inp_args = []
         inp_args_str = "  let arguments = (ins "
         prefill = " " * len(inp_args_str)
-        if len(schema.inputs):
-            for inp in schema.inputs:
-                mlir_types = get_mlir_types_from_str(
-                    inp, schema.type_constraints, inp.option
-                )
-                inp_name = inp.name
-                if inp_name in inp_names:
-                    inp_name = "input_" + inp_name
-                inp_args_str += f"{mlir_types}:${inp_name},\n" + prefill
-                inp_names.append(inp.name)
+        for inp in schema.inputs:
+            mlir_types = get_mlir_types_from_str(
+                inp, schema.type_constraints, inp.option
+            )
+            inp_name = inp.name
+            if any(inp_name == item[0] for item in inp_args):
+                inp_name = "input_" + inp_name
+            inp_args_str += f"{mlir_types}:${inp_name},\n" + prefill
+            if "Optional" in mlir_types:
+                inp_args.append((inp_name, "optional"))
+            elif "Variadic" in mlir_types:
+                inp_args.append((inp_name, "variadic"))
+            else:
+                inp_args.append((inp_name, "operand"))
 
         ##
         ## Attributes
         ##
 
+        inp_attrs = []
         for attr in sorted(schema.attributes):
             mlir_attr = get_mlir_attrs_from_str(schema.attributes[attr])
             if mlir_attr is not None:
                 inp_attr = attr
-                if inp_attr in inp_names:
+                if any(inp_attr == item[0] for item in inp_args):
                     inp_attr = "input_" + inp_attr
                 inp_args_str += f"{mlir_attr}:${inp_attr},\n" + prefill
-
+                if "Default" in mlir_attr:
+                    inp_attrs.append((inp_attr, "default"))
+                elif "Optional" in mlir_attr:
+                    inp_attrs.append((inp_attr, "optional"))
+                elif "Variadic" in mlir_attr:
+                    inp_attrs.append((inp_attr, "variadic"))
+                else:
+                    inp_attrs.append((inp_attr, "attribute"))
         if len(inp_args_str):
             # trim last comma
             inp_args_str = inp_args_str[: inp_args_str.rfind(",")]
@@ -265,25 +295,70 @@ def main():
         ## Results
         ##
 
+        out_results = []
         out_results_str = "  let results = (outs "
         prefill = " " * len(out_results_str)
         for out in schema.outputs:
-            opt = (
+            out_option = (
                 out.option
+                # allow NoneType for Constant
                 if (schema.name != "Constant")
-                else onnx.defs.OpSchema.FormalParameterOption.Optional
+                else "NoneType"
             )
-            mlir_types = get_mlir_types_from_str(out, schema.type_constraints, opt)
+            mlir_types = get_mlir_types_from_str(
+                out, schema.type_constraints, out_option
+            )
             out_name = out.name.replace(".", "")
-            if out_name in inp_names:
+            if any(out_name == item[0] for item in inp_args):
                 out_name = "output_" + out_name
             out_results_str += f"{mlir_types}:${out_name},\n" + prefill
-
+            if "Variadic" in mlir_types:
+                out_results.append((out_name, "variadic"))
+            else:
+                out_results.append((out_name, "result"))
         if len(out_results_str):
             # trim last comma
             out_results_str = out_results_str[: out_results_str.rfind(",")]
 
         inc.write(f"{out_results_str});\n")
+
+        ##
+        ## Assembley
+        ##
+
+        indent_spaces = "`\\n`" + (" ` `" * 8)
+        out_assembly_str = "  let assemblyFormat = [{\n"
+        prefill = " " * (len(out_assembly_str) // 2)
+        # operands
+        indent_spaces = "`\\n`" + (" ` `" * 8)
+        out_assembly_str += prefill + f"`(` {indent_spaces}\n"
+        for oper, otype in inp_args:
+            if otype == "operand":
+                out_assembly_str += " " * 4 + prefill
+                out_assembly_str += f"`{oper}` `=` ${oper} `:` type(${oper})"
+                out_assembly_str += f" {indent_spaces}\n"
+            if otype == "variadic":
+                out_assembly_str += " " * 4 + prefill
+                out_assembly_str += f"`{oper}` `=` ${oper} `:` type(${oper})"
+                out_assembly_str += f" {indent_spaces}\n"
+            if otype == "optional":
+                out_assembly_str += " " * 4 + prefill
+                out_assembly_str += (
+                    f"(`{oper}` `=` ${oper}^ `:` type(${oper}) {indent_spaces})?"
+                )
+        # attributes
+        attr_list = '"{' + ",".join(f'\\"{attr}\\"' for attr, atype in inp_attrs) + '}"'
+        out_assembly_str += (
+            prefill
+            + f"`attributes` ` ` `{{`custom<OnnxDictAsmPrinter>(attr-dict, {attr_list})`}}`\n"
+        )
+        out_assembly_str += prefill + f"{indent_spaces[0:20]}\n"
+        out_assembly_str += prefill + "`)`"
+        # results
+        out_assembly_str += " `:` type(results)"
+        inc.write("%s\n" % out_assembly_str)
+
+        inc.write("  }];\n")
 
         ##
         ## Class appendix

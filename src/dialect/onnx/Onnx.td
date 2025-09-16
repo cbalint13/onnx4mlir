@@ -27,8 +27,8 @@
  * \brief Onnx dialect main composition
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNX_TD_
-#define ONNX2MLIR_FRONTEND_ONNX_TD_
+#ifndef ONNX2MLIR_DIALECT_ONNX_ONNX_TD_
+#define ONNX2MLIR_DIALECT_ONNX_ONNX_TD_
 
 include "OnnxDialect.td"
 include "OnnxInterfaces.td"
@@ -36,4 +36,4 @@ include "OnnxTypes.td"
 include "OnnxAttrs.td"
 include "OnnxOps.td"
 
-#endif // ONNX2MLIR_FRONTEND_ONNX_TD_
+#endif // ONNX2MLIR_DIALECT_ONNX_ONNX_TD_

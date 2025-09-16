@@ -23,46 +23,26 @@
  *****************************************************************************/
 
 /*!
- * \file src/dialect/onnx/ir/onnx_types.cpp
- * \brief Onnx dialect types implementation
+ * \file include/onnx2mlir/dialect/onnx/OnnxPrinters.hpp
+ * \brief Onnx dialect assembly printer declaration
  */
 
-#include <llvm/ADT/TypeSwitch.h>
-#include <mlir/IR/Builders.h>
-#include <mlir/IR/DialectImplementation.h>
-#include <mlir/IR/Types.h>
-
-#include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
-#include "onnx2mlir/dialect/onnx/OnnxTypes.hpp"
-
-#define GET_TYPEDEF_CLASSES
-#include "dialect/onnx/OnnxTypes.cpp.inc" // NOLINT
-#undef GET_TYPEDEF_CLASSES
+#ifndef INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXPRINTERS_HPP_
+#define INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXPRINTERS_HPP_
 
 namespace onnx2mlir::dialect::onnx {
 
-void OnnxDialect::registerTypes() {
-  addTypes< // NOLINT
-#define GET_TYPEDEF_LIST
-#include "dialect/onnx/OnnxTypes.cpp.inc" // NOLINT
-#undef GET_TYPEDEF_LIST
-      >();
-}
+void printOnnxDictAsmPrinter(mlir::OpAsmPrinter &p, mlir::Operation *op,
+                             mlir::DictionaryAttr dict,
+                             mlir::DenseSet<mlir::StringRef> orderedAttrs = {},
+                             const bool masked = false);
 
-mlir::Type SeqType::parse(mlir::AsmParser &parser) {
-  Type elementType;
-  if (parser.parseLess() || parser.parseType(elementType) ||
-      parser.parseGreater()) {
-    parser.emitError(parser.getCurrentLocation())
-        << "failed to parse onnx.Seq type";
-    return Type();
-  }
+mlir::ParseResult
+parseOnnxDictAsmPrinter(mlir::OpAsmParser &parser,
+                        mlir::NamedAttrList &attributes,
+                        mlir::DenseSet<mlir::StringRef> orderedAttrs = {},
+                        const bool masked = false);
 
-  return get(elementType, mlir::ShapedType::kDynamic);
-}
-
-void SeqType::print(mlir::AsmPrinter &printer) const {
-  printer << "<" << getElementType() << ">";
-}
+#endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXPRINTERS_HPP_
 
 } // namespace onnx2mlir::dialect::onnx

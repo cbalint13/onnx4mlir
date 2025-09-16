@@ -806,7 +806,7 @@ void ONNXImporter::import(const std::string &filepath) {
       llvm::errs() << "ERROR: Model cannot be downgraded.\n";
       exit(-1);
     }
-    llvm::outs() << "Model OPSET conversion: " << model_opset_version << " -> "
+    llvm::outs() << "Model OPSet conversion: " << model_opset_version << " -> "
                  << convert_version << "\n";
     try {
       model_proto = onnx::version_conversion::ConvertVersion(model_import,
@@ -817,7 +817,7 @@ void ONNXImporter::import(const std::string &filepath) {
   } else {
     model_proto = model_import;
   }
-  llvm::outs() << "Model OPset version: " << model_opset_version << "\n";
+  llvm::outs() << "Model OPSet version: " << model_opset_version << "\n";
 
   // infer shapes
   onnx::shape_inference::InferShapes(model_proto);

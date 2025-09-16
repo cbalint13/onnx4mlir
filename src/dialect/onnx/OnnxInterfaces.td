@@ -27,8 +27,8 @@
  * \brief Onnx dialect interfaces definition
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNXINTERFACES_TD_
-#define ONNX2MLIR_FRONTEND_ONNXINTERFACES_TD_
+#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACES_TD_
+#define ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACES_TD_
 
 include "mlir/IR/OpBase.td"
 
@@ -45,4 +45,4 @@ def OPCountInfo : OpInterface<"OPCountInfo"> {
   ];
 }
 
-#endif // ONNX2MLIR_FRONTEND_ONNXINTERFACES_TD_
+#endif // ONNX2MLIR_DIALECT_ONNX_ONNXINTERFACES_TD_

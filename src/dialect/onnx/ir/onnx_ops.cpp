@@ -31,6 +31,7 @@
 #include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxInterfaces.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxOps.hpp"
+#include "onnx2mlir/dialect/onnx/OnnxPrinters.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxTypes.hpp"
 
 #define GET_OP_CLASSES
@@ -42,6 +43,7 @@ void OnnxDialect::registerOps() {
   addOperations<
 #define GET_OP_LIST
 #include "dialect/onnx/Onnx.cpp.inc" // NOLINT
+#undef GET_OP_LIST
       >();
 }
 

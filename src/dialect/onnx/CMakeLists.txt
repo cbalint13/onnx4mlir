@@ -61,6 +61,7 @@ add_mlir_dialect_library(onnx2mlir_onnx_dialect
     ir/onnx_interfaces.cpp
     ir/onnx_ops.cpp
     ir/onnx_types.cpp
+    ir/onnx_printers.cpp
     support/onnx_shapes.cpp
   DEPENDS
     MLIROnnxIncGen

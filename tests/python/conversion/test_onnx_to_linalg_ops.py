@@ -1,9 +1,8 @@
 import pytest
-import numpy as np
-import os
-import sys
 import difflib
 import textwrap
+import inspect
+import numpy as np
 from mlir.dialects import func
 from mlir.ir import (
     Context,
@@ -18,7 +17,17 @@ from onnx2mlir.dialect import onnx, register_onnx_dialect
 from onnx2mlir.passes import register_onnx_to_linag_pass
 
 
-def test_onnx_ConstantOp_lower():
+@pytest.mark.parametrize(
+    "CALL_OPERATOR",
+    [
+        getattr(onnx, op)
+        for op in dir(onnx)
+        if (("ConstantOp" in op) or ("Constant_" in op))
+        and inspect.isfunction(getattr(onnx, op))
+    ],
+)
+def test_onnx_ConstantOp_lower(CALL_OPERATOR):
+    # def test_onnx_ConstantOp_lower():
     """
     Test ONNX ConstantOp lower.
     """
@@ -41,8 +50,8 @@ def test_onnx_ConstantOp_lower():
             tensor = support.mlir_dense_from_numpy(np_array)
             func_op = func.FuncOp("main", ([], [tensor.type]))
             with InsertionPoint(func_op.add_entry_block()):
-                const = onnx.ConstantOp(tensor.type, value=tensor)
-                func.ReturnOp([const.result])
+                const = CALL_OPERATOR(tensor.type, value=tensor)
+                func.ReturnOp([const])
             module.body.append(func_op)
             module.operation.verify()
         return module

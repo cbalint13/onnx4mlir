@@ -34,5 +34,6 @@
 
 #define GET_ATTRDEF_CLASSES
 #include "dialect/onnx/OnnxAttrs.h.inc"
+#undef GET_ATTRDEF_CLASSES
 
 #endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXATTRS_HPP_

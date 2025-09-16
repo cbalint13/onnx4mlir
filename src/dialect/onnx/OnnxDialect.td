@@ -27,8 +27,8 @@
  * \brief Onnx dialect declaration
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
-#define ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
+#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXDIALECT_TD_
+#define ONNX2MLIR_DIALECT_ONNX_ONNXDIALECT_TD_
 
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/OpBase.td"
@@ -43,12 +43,7 @@ def Onnx_Dialect : Dialect {
     private:
       void registerOps();
       void registerTypes();
-    public:
-      ::mlir::Attribute parseAttribute(::mlir::DialectAsmParser &parser,
-                                     ::mlir::Type type) const override;
-      void printAttribute(::mlir::Attribute attr,
-                          ::mlir::DialectAsmPrinter &printer) const override;
     }];
 }
 
-#endif // ONNX2MLIR_FRONTEND_ONNXDIALECT_TD_
+#endif // ONNX2MLIR_DIALECT_ONNX_ONNXDIALECT_TD_

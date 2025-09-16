@@ -27,8 +27,8 @@
  * \brief Onnx dialect types definition
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNXTYPES_TD_
-#define ONNX2MLIR_FRONTEND_ONNXTYPES_TD_
+#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXTYPES_TD_
+#define ONNX2MLIR_DIALECT_ONNX_ONNXTYPES_TD_
 
 include "mlir/IR/PatternBase.td"
 
@@ -57,4 +57,4 @@ class OptOf<Type type> :
 def ONNXConstantOpFromDenseAttr: NativeCodeCall<
   "onnx_mlir::OnnxBuilder($_builder, $_loc).constant($0)">;
 
-#endif // ONNX2MLIR_FRONTEND_ONNXTYPES_TD_
+#endif // ONNX2MLIR_DIALECT_ONNX_ONNXTYPES_TD_

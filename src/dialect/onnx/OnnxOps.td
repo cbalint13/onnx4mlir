@@ -27,8 +27,8 @@
  * \brief Onnx dialect operations definition
  */
 
-#ifndef ONNX2MLIR_FRONTEND_ONNXOPS_TD_
-#define ONNX2MLIR_FRONTEND_ONNXOPS_TD_
+#ifndef ONNX2MLIR_DIALECT_ONNX_ONNXOPS_TD_
+#define ONNX2MLIR_DIALECT_ONNX_ONNXOPS_TD_
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -39,4 +39,4 @@ class Onnx_Op<string mnemonic, list<Trait> traits>
 
 include "OnnxOps.td.inc"
 
-#endif // ONNX2MLIR_FRONTEND_ONNXOPS_TD_
+#endif // ONNX2MLIR_DIALECT_ONNX_ONNXOPS_TD_

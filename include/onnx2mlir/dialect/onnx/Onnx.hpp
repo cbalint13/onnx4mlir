@@ -34,6 +34,7 @@
 #include "onnx2mlir/dialect/onnx/OnnxDialect.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxInterfaces.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxOps.hpp"
+#include "onnx2mlir/dialect/onnx/OnnxPrinters.hpp"
 #include "onnx2mlir/dialect/onnx/OnnxTypes.hpp"
 
 #endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNX_HPP_

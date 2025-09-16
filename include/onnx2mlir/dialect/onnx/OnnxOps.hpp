@@ -39,5 +39,6 @@
 
 #define GET_OP_CLASSES
 #include "dialect/onnx/Onnx.h.inc"
+#undef GET_OP_CLASSES
 
 #endif // INCLUDE_ONNX2MLIR_DIALECT_ONNX_ONNXOPS_HPP_
