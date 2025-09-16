@@ -31,10 +31,8 @@
 
 
 import re
-import sys
 import onnx
 import argparse
-from collections import defaultdict, OrderedDict
 from datetime import datetime
 from onnx import defs
 
@@ -93,10 +91,8 @@ def get_mlir_types_from_str(type_strs, schema_constraints, option=None):
             re.escape(key)
             for key in sorted(onnx_to_mlir_types.keys(), key=len, reverse=True)
         )
-        mlir_type_str = re.sub(pattern, lambda m: onnx_to_mlir_types[m.group(0)], attr)
-        mlir_types += f"{mlir_type_str}" + (
-            ", " if idx + 1 < len(attr_constraints) else ""
-        )
+        mlir_types += re.sub(pattern, lambda m: onnx_to_mlir_types[m.group(0)], attr)
+        mlir_types += ", " if (idx + 1) < len(attr_constraints) else ""
 
     # Optional absence to NoneType
     if (option == "NoneType") or (
@@ -312,7 +308,9 @@ def main():
             if any(out_name == item[0] for item in inp_args):
                 out_name = "output_" + out_name
             out_results_str += f"{mlir_types}:${out_name},\n" + prefill
-            if "Variadic" in mlir_types:
+            if "Optional" in mlir_types:
+                out_results.append((out_name, "optional"))
+            elif "Variadic" in mlir_types:
                 out_results.append((out_name, "variadic"))
             else:
                 out_results.append((out_name, "result"))
@@ -323,7 +321,7 @@ def main():
         inc.write(f"{out_results_str});\n")
 
         ##
-        ## Assembley
+        ## Assembly format
         ##
 
         indent_spaces = "`\\n`" + (" ` `" * 8)
@@ -333,11 +331,7 @@ def main():
         indent_spaces = "`\\n`" + (" ` `" * 8)
         out_assembly_str += prefill + f"`(` {indent_spaces}\n"
         for oper, otype in inp_args:
-            if otype == "operand":
-                out_assembly_str += " " * 4 + prefill
-                out_assembly_str += f"`{oper}` `=` ${oper} `:` type(${oper})"
-                out_assembly_str += f" {indent_spaces}\n"
-            if otype == "variadic":
+            if otype in ("operand", "variadic"):
                 out_assembly_str += " " * 4 + prefill
                 out_assembly_str += f"`{oper}` `=` ${oper} `:` type(${oper})"
                 out_assembly_str += f" {indent_spaces}\n"
@@ -348,10 +342,8 @@ def main():
                 )
         # attributes
         attr_list = '"{' + ",".join(f'\\"{attr}\\"' for attr, atype in inp_attrs) + '}"'
-        out_assembly_str += (
-            prefill
-            + f"`attributes` ` ` `{{`custom<OnnxDictAsmPrinter>(attr-dict, {attr_list})`}}`\n"
-        )
+        out_assembly_str += prefill
+        out_assembly_str += f"`attributes` ` ` `{{`custom<OnnxDictAsmPrinter>(attr-dict, {attr_list})`}}`\n"
         out_assembly_str += prefill + f"{indent_spaces[0:20]}\n"
         out_assembly_str += prefill + "`)`"
         # results

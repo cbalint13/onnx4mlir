@@ -27,7 +27,6 @@ from onnx2mlir.passes import register_onnx_to_linag_pass
     ],
 )
 def test_onnx_ConstantOp_lower(CALL_OPERATOR):
-    # def test_onnx_ConstantOp_lower():
     """
     Test ONNX ConstantOp lower.
     """
