@@ -35,6 +35,11 @@ if ! command -v black &> /dev/null; then
   exit 1
 fi
 
+if ! command -v pylint &> /dev/null; then
+  echo "ERROR: pylint is not installed."
+  exit 1
+fi
+
 for f in $(git ls-files -- '*.h' '*.hpp' '*.c' '*.cc' '*.cpp' | grep -v '/onnx_to_linalg'); do
 
   if [ $quiet == false ];
@@ -89,17 +94,25 @@ for f in $(git ls-files -- '*.py'); do
   ## black
   ##
 
-  pdiff=`black --quiet --check --color --diff $f`
-  if [[ -n "$pdiff" && $apply == true ]]; then
+  bdiff=`black --quiet --check --color --diff $f`
+  if [[ -n "$bdiff" && $apply == true ]]; then
     black --quiet $f
     echo "Formatted: [$f]"
   fi
 
+
+  ##
+  ## pylint
+  ##
+
+  pdiff=`pylint --score=no --disable=no-name-in-module,import-error $f 2>&1`
+
   # display errors
-  if [[ -n "$pdiff" ]]; then
+  if [[ -n "$bdiff" || -n "$pdiff" ]]; then
     echo
     echo -e "------->>>--[\e[32m$f\e[0m]-->>>---------"
-    echo "$pdiff" | tail -n +2
+    echo "$bdiff" | tail -n +2
+    echo "$pdiff"
     echo -e "-------<<<--[\e[32m$f\e[0m]--<<<---------"
     echo
   fi

@@ -22,17 +22,16 @@
 #
 ###############################################################################
 
-##
-## \file python/onnx2mlir/support/numpy_to_mlir.py
-## \brief NumPy to MLIR helpers
-##
+"""
+\file python/onnx2mlir/support/numpy_to_mlir.py
+\brief NumPy to MLIR helpers
+"""
 
 import numpy as np
 from mlir.ir import (
     DenseElementsAttr,
     RankedTensorType,
     IntegerType,
-    FloatType,
     F16Type,
     F32Type,
     F64Type,

@@ -1,4 +1,33 @@
-import pytest
+###############################################################################
+#
+#  ONNX2MLIR (ONNX dialect mappings for composable optimizations)
+#
+#  Authors:
+#   Cristian Balint <cristian dot balint at gmail dot com>
+#
+#  Copyright (c) 2021,2025
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+###############################################################################
+# pylint: disable=line-too-long,invalid-name
+
+"""
+\file tests/python/dialect/test_onnx_dialect_ir.py
+\brief Tests for Onnx dialect IR
+"""
+
 import difflib
 import textwrap
 import numpy as np
@@ -10,7 +39,7 @@ from mlir.ir import (
     Module,
 )
 
-import onnx2mlir.support as support
+from onnx2mlir import support
 from onnx2mlir.dialect import onnx, register_onnx_dialect
 
 

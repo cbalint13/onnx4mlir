@@ -23,21 +23,40 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 ###############################################################################
+# pylint: disable=line-too-long,too-many-locals,too-many-branches,too-many-statements
+# pylint: disable=consider-using-with,consider-using-f-string,f-string-without-interpolation
 
-##
-## \file tools/gen_onnx_dia.py
-## \brief A tool to generate Onnx operators tablegen definition
-##
-
+"""
+\file tools/gen_onnx_dia.py
+\brief A tool for generating ONNX operator tablegen definitions
+"""
 
 import re
-import onnx
 import argparse
 from datetime import datetime
+import onnx
 from onnx import defs
 
 
 def get_mlir_types_from_str(type_strs, schema_constraints, option=None):
+    """Get MLIR types from ONNX types
+
+    Parameters
+    ----------
+    type_strs:
+      The Onnx types string
+
+    schema_constraints:
+      Te Onnx schema constrains
+
+    option:
+      The formal parameter option
+
+    Returns:
+    --------
+    mlir_types:
+      The MLIR types string
+    """
     onnx_to_mlir_types = {
         "(": "<[",
         ")": "]>",
@@ -95,9 +114,7 @@ def get_mlir_types_from_str(type_strs, schema_constraints, option=None):
         mlir_types += ", " if (idx + 1) < len(attr_constraints) else ""
 
     # Optional absence to NoneType
-    if (option == "NoneType") or (
-        option == defs.OpSchema.FormalParameterOption.Optional
-    ):
+    if option in ("NoneType", defs.OpSchema.FormalParameterOption.Optional):
         mlir_types += ", NoneType"
 
     if ", " in mlir_types:
@@ -113,6 +130,18 @@ def get_mlir_types_from_str(type_strs, schema_constraints, option=None):
 
 
 def get_mlir_attrs_from_str(attr):
+    """Get MLIR attributes from ONNX attributes
+
+    Parameters
+    ----------
+    attr:
+      The Onnx attributes string
+
+    Returns:
+    --------
+    mlir_attr:
+      The MLIR attributes string
+    """
 
     onnx_to_mlir_attrs = {
         "INT": "I64Attr",
@@ -162,13 +191,14 @@ def get_mlir_attrs_from_str(attr):
 
 
 def main():
+    """ONNX dialect tablegen file generator"""
 
     parser = argparse.ArgumentParser(description="MLIR ONNX ops generator.")
     parser.add_argument("output_mlir_ops_inc", help="MLIR Ops file output")
     parser.add_argument("-debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
 
-    inc = open(args.output_mlir_ops_inc, "w")
+    inc = open(args.output_mlir_ops_inc, "w", encoding="utf-8")
 
     ##
     ## Header
@@ -231,8 +261,8 @@ def main():
                 if line
             ]
         )
-        doctxt = doctxt.split(".")[0]
-        if "." not in doctxt[-3:] != ".":
+        doctxt = doctxt.split(".", maxsplit=1)[0]
+        if "." not in doctxt[-3:]:
             doctxt += "."
 
         inc.write(f"    {doctxt}\n")
@@ -281,7 +311,7 @@ def main():
                     inp_attrs.append((inp_attr, "variadic"))
                 else:
                     inp_attrs.append((inp_attr, "attribute"))
-        if len(inp_args_str):
+        if inp_args_str:
             # trim last comma
             inp_args_str = inp_args_str[: inp_args_str.rfind(",")]
 
@@ -314,7 +344,7 @@ def main():
                 out_results.append((out_name, "variadic"))
             else:
                 out_results.append((out_name, "result"))
-        if len(out_results_str):
+        if out_results_str:
             # trim last comma
             out_results_str = out_results_str[: out_results_str.rfind(",")]
 
@@ -348,9 +378,9 @@ def main():
         out_assembly_str += prefill + "`)`"
         # results
         out_assembly_str += " `:` type(results)"
-        inc.write("%s\n" % out_assembly_str)
+        inc.write(f"%s\n" % out_assembly_str)
 
-        inc.write("  }];\n")
+        inc.write(f"  }}];\n")
 
         ##
         ## Class appendix
