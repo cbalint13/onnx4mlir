@@ -49,7 +49,8 @@ public:
   explicit ONNXImporter(const std::map<std::string, std::string> &options);
 
 protected:
-  void import(const std::string &file_or_string) override;
+  void import(const std::string &file_or_string,
+              mlir::MLIRContext *ctx) override;
 
 private:
   // parse the graph ins & outs

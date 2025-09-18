@@ -437,17 +437,7 @@ namespace onnx2mlir::frontend {
  */
 
 ONNXImporter::ONNXImporter(const std::map<std::string, std::string> &options)
-    : FrontendImporter(options) {
-  // context setup
-  mlirCtx->loadDialect<mlir::affine::AffineDialect,
-                       mlir::complex::ComplexDialect, mlir::func::FuncDialect,
-                       mlir::sparse_tensor::SparseTensorDialect,
-                       onnx2mlir::dialect::onnx::OnnxDialect>();
-  mlirCtx->disableMultithreading();
-  // initialize the module
-  mlir::OpBuilder builder(mlirCtx.get());
-  module = mlir::ModuleOp::create(builder.getUnknownLoc());
-}
+    : FrontendImporter(options) {}
 
 const std::string ONNXImporter::get_versioned_name(const std::string &OpName) {
   // const 1,3,9,23
@@ -753,9 +743,28 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
   module->push_back(func);
 }
 
-void ONNXImporter::import(const std::string &file_or_string) {
-  llvm::outs() << "ONNX engine version: " << onnx::LAST_RELEASE_VERSION << "\n";
-  llvm::outs() << "ONNX engine IR version: " << onnx::IR_VERSION << "\n";
+void ONNXImporter::import(const std::string &file_or_string,
+                          mlir::MLIRContext *ctx) {
+  bool verbose = false;
+  if (opt_args.count("--verbose") > 0)
+    verbose = true;
+
+  // context setup
+  mlirCtx.reset(ctx);
+  mlirCtx->loadDialect<mlir::affine::AffineDialect,
+                       mlir::complex::ComplexDialect, mlir::func::FuncDialect,
+                       mlir::sparse_tensor::SparseTensorDialect,
+                       onnx2mlir::dialect::onnx::OnnxDialect>();
+  // initialize the module
+  mlir::OpBuilder builder(mlirCtx.get());
+  module = mlir::ModuleOp::create(builder.getUnknownLoc());
+
+  if (verbose) {
+    llvm::outs() << "ONNX engine version: " << onnx::LAST_RELEASE_VERSION;
+    llvm::outs() << "\n";
+    llvm::outs() << "ONNX engine IR version: " << onnx::IR_VERSION;
+    llvm::outs() << "\n";
+  }
 
   // get ops versioning
   engine_opset_version = -1;
@@ -766,8 +775,10 @@ void ONNXImporter::import(const std::string &file_or_string) {
     ops_versions[schema.Name()].push_back(schema.SinceVersion());
   }
 
-  llvm::outs() << "ONNX engine opset version: " << engine_opset_version << "\n";
-  llvm::outs() << "\n";
+  if (verbose) {
+    llvm::outs() << "ONNX engine opset version: " << engine_opset_version;
+    llvm::outs() << "\n\n";
+  }
 
   // parse onnx source
   onnx::ModelProto model_import;
@@ -776,10 +787,12 @@ void ONNXImporter::import(const std::string &file_or_string) {
       llvm::errs() << "ERROR: ONNX model string parsing error." << "\n";
       exit(-1);
     }
-    llvm::outs() << "Model data: " << file_or_string.length()
-                 << " bytes <serialized>\n";
+    if (verbose)
+      llvm::outs() << "Model data: " << file_or_string.length()
+                   << " bytes <serialized>\n";
   } else {
-    llvm::outs() << "Model path: " << file_or_string << "\n";
+    if (verbose)
+      llvm::outs() << "Model path: " << file_or_string << "\n";
     std::ifstream model_file(file_or_string, std::ios::binary);
     if (!model_file.is_open()) {
       llvm::errs() << "Error opening file: " << file_or_string << "\n";
@@ -801,7 +814,8 @@ void ONNXImporter::import(const std::string &file_or_string) {
     }
   }
 
-  llvm::outs() << "Model IR version: " << model_import.ir_version() << "\n";
+  if (verbose)
+    llvm::outs() << "Model IR version: " << model_import.ir_version() << "\n";
 
   // convert model
   onnx::ModelProto model_proto;
@@ -813,8 +827,9 @@ void ONNXImporter::import(const std::string &file_or_string) {
       llvm::errs() << "ERROR: Model cannot be downgraded.\n";
       exit(-1);
     }
-    llvm::outs() << "Model OPSet conversion: " << model_opset_version << " -> "
-                 << convert_version << "\n";
+    if (verbose)
+      llvm::outs() << "Model OPSet conversion: " << model_opset_version
+                   << " -> " << convert_version << "\n";
     try {
       model_proto = onnx::version_conversion::ConvertVersion(model_import,
                                                              convert_version);
@@ -824,15 +839,18 @@ void ONNXImporter::import(const std::string &file_or_string) {
   } else {
     model_proto = model_import;
   }
-  llvm::outs() << "Model OPSet version: " << model_opset_version << "\n";
+  if (verbose)
+    llvm::outs() << "Model OPSet version: " << model_opset_version << "\n";
 
   // infer shapes
   onnx::shape_inference::InferShapes(model_proto);
 
   const onnx::GraphProto &graph_proto = model_proto.graph();
 
-  llvm::outs() << "\n";
-  llvm::outs() << "Graph Name: " << graph_proto.name() << "\n";
+  if (verbose) {
+    llvm::outs() << "\n";
+    llvm::outs() << "Graph Name: " << graph_proto.name() << "\n";
+  }
 
   /*
    * MLIR ONNX
@@ -847,7 +865,7 @@ void ONNXImporter::import(const std::string &file_or_string) {
   // verify module
   if (llvm::failed(mlir::verify(*module))) {
     llvm::errs() << "MLIR module verification failed.\n";
-    // exit(-1);
+    exit(-1);
   }
 }
 

@@ -27,6 +27,8 @@
  * \brief Main compiler program
  */
 
+#include <mlir/IR/MLIRContext.h>
+
 #include <iostream>
 #include <map>
 #include <regex>
@@ -88,7 +90,8 @@ int main(int argc, char **argv) {
   auto ONNXLoader = new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
   auto ONNXConverter = new onnx2mlir::Converter<onnx2mlir::frontend::ONNXConverter>();
 
-  ONNXLoader->importModule(ONNXFilename);
+  mlir::MLIRContext ctx;
+  ONNXLoader->importModule(ONNXFilename, &ctx);
   ONNXConverter->convertModule(ONNXLoader->getMLIRModule());
 
   auto module = ONNXLoader->getMLIRModule();

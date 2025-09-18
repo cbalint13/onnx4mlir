@@ -50,8 +50,8 @@ public:
   explicit Importer(Args &&...args)
       : ImporterBackend(std::forward<Args>(args)...) {}
   // input file parser
-  void importModule(const std::string &filepath) {
-    ImporterBackend::import(filepath);
+  void importModule(const std::string &filepath, mlir::MLIRContext *ctx) {
+    ImporterBackend::import(filepath, ctx);
   }
   // get the MLIR context
   mlir::MLIRContext getMLIRCtx() { return ImporterBackend::get_mlir_ctx(); }
@@ -76,12 +76,12 @@ namespace frontend {
 class FrontendImporter {
 public:
   explicit FrontendImporter(const std::map<std::string, std::string> &options)
-      : opt_args(options), mlirCtx(std::make_unique<mlir::MLIRContext>()) {}
+      : opt_args(options) {}
 
   virtual ~FrontendImporter() = default;
 
 protected:
-  virtual void import(const std::string &filepath) = 0;
+  virtual void import(const std::string &filepath, mlir::MLIRContext *ctx) = 0;
 
   mlir::MLIRContext *get_mlir_ctx() { return mlirCtx.get(); }
   mlir::ModuleOp get_mlir_module() { return module.get(); }
@@ -89,7 +89,7 @@ protected:
   // driver options argument
   std::map<std::string, std::string> opt_args;
   // MLIR context
-  std::unique_ptr<mlir::MLIRContext> mlirCtx;
+  std::unique_ptr<mlir::MLIRContext> mlirCtx{nullptr};
   // MLIR module
   mlir::OwningOpRef<mlir::ModuleOp> module{nullptr};
 };

@@ -28,85 +28,83 @@
 \brief Tests for Onnx to Linalg operator lowering
 """
 
-import difflib
-import textwrap
-import inspect
 import pytest
 import numpy as np
-from mlir.dialects import func
+
+from onnx import TensorProto
+from onnx.defs import get_all_schemas_with_history
+from onnx.helper import (
+    make_model,
+    make_node,
+    make_tensor_value_info,
+    make_graph,
+    make_tensor,
+    make_opsetid,
+)
+from onnx.checker import check_model
+
 from mlir.ir import (
     Context,
-    InsertionPoint,
     Location,
-    Module,
 )
-from mlir.passmanager import PassManager
 
-from onnx2mlir import support
-from onnx2mlir.dialect import onnx, register_onnx_dialect
-from onnx2mlir.passes import register_onnx_to_linag_pass
+from onnx2mlir.importer import import_from_onnx
+from onnx2mlir.pipeline import llvm_lower_pipeline, runner
 
 
 @pytest.mark.parametrize(
-    "CALL_OPERATOR",
+    "ONNX_OPSET_VERSION",
     [
-        getattr(onnx, op)
-        for op in dir(onnx)
-        if (("ConstantOp" in op) or ("Constant_" in op))
-        and inspect.isfunction(getattr(onnx, op))
+        schema.since_version
+        for schema in get_all_schemas_with_history()
+        if "Constant" == schema.name
     ],
 )
-def test_onnx_ConstantOp_lower(CALL_OPERATOR):
+def test_onnx_ConstantOp_lower(ONNX_OPSET_VERSION):
     """
     Test ONNX ConstantOp lower.
     """
-    EXPECTED_OUTPUT = textwrap.dedent(
-        """
-        module {
-          func.func @main() -> tensor<2x2xi8> {
-            %cst = arith.constant dense<[[-128, 8], [-9, 127]]> : tensor<2x2xi8>
-            return %cst : tensor<2x2xi8>
-          }
-        }
-        """
-    )
 
-    def create_mlir_module():
-        with Context() as ctx, Location.unknown() as unk:
-            register_onnx_dialect(ctx)
-            module = Module.create(unk)
-            np_array = np.array([[-128, 8], [-9, 127]], dtype=np.int8)
-            tensor = support.mlir_dense_from_numpy(np_array)
-            func_op = func.FuncOp("main", ([], [tensor.type]))
-            with InsertionPoint(func_op.add_entry_block()):
-                const = CALL_OPERATOR(tensor.type, value=tensor)
-                func.ReturnOp([const])
-            module.body.append(func_op)
-            module.operation.verify()
-        return module
+    def create_onnx_model(np_array):
+        constant_value = np_array
+        output_tensor_info = make_tensor_value_info(
+            "output_tensor", TensorProto.FLOAT, [2, 2]
+        )
+        constant_node = make_node(
+            "Constant",
+            inputs=[],
+            outputs=["output_tensor"],
+            value=make_tensor(
+                name="const_tensor",
+                data_type=TensorProto.FLOAT,
+                dims=[2, 2],
+                vals=constant_value.flatten().tolist(),
+            ),
+        )
+        graph = make_graph(
+            [constant_node],
+            "constant_graph",
+            # no inputs
+            [],
+            [output_tensor_info],
+        )
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
 
-    mlir_module = create_mlir_module()
+    np_array = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    onnx_model = create_onnx_model(np_array)
 
-    register_onnx_to_linag_pass()
+    with Context() as ctx, Location.unknown():
 
-    with Context(), Location.unknown():
-        pm = PassManager()
-        pm.add("lower-onnx-to-linalg")
-        pm.run(mlir_module.operation)
+        mlir_module = import_from_onnx(onnx_model, ctx)
         mlir_module.operation.verify()
 
-    actual_output = str(mlir_module)
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
 
-    expected_lines = EXPECTED_OUTPUT.strip().splitlines()
-    actual_lines = actual_output.strip().splitlines()
+        output = np.zeros_like(np_array)
+        _, outputs = runner(llvm_module, "main", [], [output])
 
-    diff = difflib.unified_diff(
-        expected_lines,
-        actual_lines,
-        fromfile="expected.mlir",
-        tofile="actual.mlir",
-        lineterm="",
-    )
-    diff_output = "\n".join(list(diff))
-
-    assert not diff_output, f"MLIR output mismatch detected:\n{diff_output}"
+        np.testing.assert_allclose(np_array, outputs[0], atol=1e-3)

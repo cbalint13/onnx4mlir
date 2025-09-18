@@ -40,22 +40,25 @@ PYBIND11_MODULE(_onnx2mlirImporters, m) {
 
   m.def(
       "import_from_onnx",
-      [](const std::string &ONNXFilename, int onnxConvertOps) -> MlirModule {
+      [](const std::string &ONNXFilename, MlirContext context,
+         int onnxConvertOps) -> MlirModule {
         std::map<std::string, std::string> options;
         if (onnxConvertOps >= 0)
           options["--onnx-convert-ops"] = std::to_string(onnxConvertOps);
         auto ONNXLoader =
             new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
-        ONNXLoader->importModule(ONNXFilename);
+        mlir::MLIRContext *mlirCtx = unwrap(context);
+        ONNXLoader->importModule(ONNXFilename, mlirCtx);
         auto moduleOp = ONNXLoader->getMLIRModule();
         return wrap(moduleOp);
       },
-      py::arg("onnxfilename"), py::arg("onnx_convert_ops") = -1,
-      "Import from an ONNX file path");
+      py::arg("onnxfilename"), py::arg("context"),
+      py::arg("onnx_convert_ops") = -1, "Import from an ONNX file path");
 
   m.def(
       "import_from_onnx",
-      [](py::object onnx_model_proto, int onnxConvertOps) -> MlirModule {
+      [](py::object onnx_model_proto, MlirContext context,
+         int onnxConvertOps) -> MlirModule {
         std::map<std::string, std::string> options;
         if (onnxConvertOps >= 0)
           options["--onnx-convert-ops"] = std::to_string(onnxConvertOps);
@@ -65,10 +68,12 @@ PYBIND11_MODULE(_onnx2mlirImporters, m) {
         std::string ONNXSerialString = serialized_bytes;
         auto ONNXLoader =
             new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
-        ONNXLoader->importModule(ONNXSerialString);
+        mlir::MLIRContext *mlirCtx = unwrap(context);
+        ONNXLoader->importModule(ONNXSerialString, mlirCtx);
         auto moduleOp = ONNXLoader->getMLIRModule();
         return wrap(moduleOp);
       },
-      py::arg("onnxfilename"), py::arg("onnx_convert_ops") = -1,
+      py::arg("onnxfilename"), py::arg("context"),
+      py::arg("onnx_convert_ops") = -1,
       "Import from an ONNX ModelProto object");
 }
