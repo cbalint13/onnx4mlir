@@ -52,8 +52,8 @@ def runner(module, func_entry, inputs, outputs):
 
     Returns:
     --------
-    inputs, outputs:
-      The resulting input and output numpy arrays.
+    outputs:
+      The resulting list with output numpy arrays.
     """
 
     assert isinstance(inputs, (list, tuple))
@@ -75,4 +75,4 @@ def runner(module, func_entry, inputs, outputs):
 
     outputs = [ranked_memref_to_numpy(carg[idx]) for idx, carg in enumerate(out_cargs)]
 
-    return inputs, outputs
+    return outputs

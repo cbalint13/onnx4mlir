@@ -105,6 +105,6 @@ def test_onnx_ConstantOp_lower(ONNX_OPSET_VERSION):
         llvm_module.operation.verify()
 
         output = np.zeros_like(np_array)
-        _, outputs = runner(llvm_module, "main", [], [output])
+        outputs = runner(llvm_module, "main", [], [output])
 
         np.testing.assert_allclose(np_array, outputs[0], atol=1e-3)
