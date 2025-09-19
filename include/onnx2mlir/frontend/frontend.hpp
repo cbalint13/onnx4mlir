@@ -83,15 +83,15 @@ public:
 protected:
   virtual void import(const std::string &filepath, mlir::MLIRContext *ctx) = 0;
 
-  mlir::MLIRContext *get_mlir_ctx() { return mlirCtx.get(); }
-  mlir::ModuleOp get_mlir_module() { return module.get(); }
+  mlir::MLIRContext *get_mlir_ctx() { return mlirCtx; }
+  mlir::ModuleOp get_mlir_module() { return module; }
 
   // driver options argument
   std::map<std::string, std::string> opt_args;
   // MLIR context
-  std::unique_ptr<mlir::MLIRContext> mlirCtx{nullptr};
+  mlir::MLIRContext *mlirCtx{nullptr};
   // MLIR module
-  mlir::OwningOpRef<mlir::ModuleOp> module{nullptr};
+  mlir::ModuleOp module;
 };
 
 // converter interface

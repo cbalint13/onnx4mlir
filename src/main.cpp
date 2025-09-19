@@ -87,19 +87,19 @@ int main(int argc, char **argv) {
     exit(-1);
   }
 
-  auto ONNXLoader = new onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
-  auto ONNXConverter = new onnx2mlir::Converter<onnx2mlir::frontend::ONNXConverter>();
+  auto ONNXLoader = onnx2mlir::Importer<onnx2mlir::frontend::ONNXImporter>(options);
+  auto ONNXConverter = onnx2mlir::Converter<onnx2mlir::frontend::ONNXConverter>();
 
   mlir::MLIRContext ctx;
-  ONNXLoader->importModule(ONNXFilename, &ctx);
-  ONNXConverter->convertModule(ONNXLoader->getMLIRModule());
+  ONNXLoader.importModule(ONNXFilename, &ctx);
+  ONNXConverter.convertModule(ONNXLoader.getMLIRModule());
 
-  auto module = ONNXLoader->getMLIRModule();
+  auto module = ONNXLoader.getMLIRModule();
   // DEBUG
   mlir::OpPrintingFlags flags;
   flags.elideLargeElementsAttrs(16);
   // flags.printLargeElementsAttrWithHex();
-  flags.enableDebugInfo();
+  // flags.enableDebugInfo();
   llvm::outs().enable_colors(true);
   module->print(llvm::outs(), flags);
   llvm::outs().enable_colors(false);

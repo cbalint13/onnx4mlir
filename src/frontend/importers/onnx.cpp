@@ -470,7 +470,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
    */
 
   // get main func
-  auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
+  auto func = module.lookupSymbol<mlir::func::FuncOp>("main");
   // add func body
   auto block = func.addEntryBlock();
 
@@ -502,7 +502,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
    * Build the MLIR graph
    */
 
-  mlir::OpBuilder builder(mlirCtx.get());
+  mlir::OpBuilder builder(mlirCtx);
 
   // map mlir ops i/o
   std::map<std::string, std::shared_ptr<mlir::Operation *>> ops_by_name;
@@ -513,7 +513,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
   for (const auto &node : graph_proto.node()) {
     // check operator
     const auto opFullName = get_versioned_name(node.op_type());
-    if (!checkOnnxOpExists(mlirCtx.get(), opFullName)) {
+    if (!checkOnnxOpExists(mlirCtx, opFullName)) {
       llvm::errs() << "ERROR: operation [" << node.op_type()
                    << "] not registered.\n";
       exit(-1);
@@ -522,7 +522,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
     if (node.op_type() == "Constant") {
       // attributes
       std::vector<mlir::NamedAttribute> attrs;
-      auto attr = OnnxToMlir_Attr(node.attribute()[0], mlirCtx.get());
+      auto attr = OnnxToMlir_Attr(node.attribute()[0], mlirCtx);
       attrs.push_back(*attr);
       // origin
       auto nameVal = builder.getStringAttr(node.name());
@@ -546,7 +546,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
   for (const auto &initializer : graph_proto.initializer()) {
     // attributes
     std::vector<mlir::NamedAttribute> attrs;
-    auto value = OnnxToMlir_Tensor(initializer, mlirCtx.get());
+    auto value = OnnxToMlir_Tensor(initializer, mlirCtx);
     mlir::NamedAttribute attr("value", value);
     attrs.push_back(attr);
     // origin
@@ -574,7 +574,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
     mlir::NamedAttribute labels("mlir.value", nameVal);
     attrs.push_back(labels);
     // result type
-    mlir::Type noneType = mlir::NoneType::get(mlirCtx.get());
+    mlir::Type noneType = mlir::NoneType::get(mlirCtx);
     auto types = std::vector<mlir::Type>({noneType});
 
     const auto cstFullName = get_versioned_name("Constant");
@@ -588,7 +588,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
       // Pass 1, set attributes
       std::vector<mlir::NamedAttribute> attrs;
       for (const auto &attribute : node.attribute()) {
-        auto attr = OnnxToMlir_Attr(attribute, mlirCtx.get());
+        auto attr = OnnxToMlir_Attr(attribute, mlirCtx);
         attrs.push_back(*attr);
       }
       // attributes origin
@@ -601,7 +601,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
       for (int i = 0; i < nResults; ++i) {
         // unmapped outputs
         if (i >= node.output().size()) {
-          types.push_back(mlir::NoneType::get(mlirCtx.get()));
+          types.push_back(mlir::NoneType::get(mlirCtx));
           continue;
         }
         // node output to set
@@ -609,7 +609,7 @@ void ONNXImporter::parse_graph_nodes(const onnx::GraphProto &graph_proto) {
         // lookup in vis table
         auto it = vis.find(out);
         if (it != vis.end()) {
-          auto type = OnnxToMlir_Type(*(it->second), mlirCtx.get());
+          auto type = OnnxToMlir_Type(*(it->second), mlirCtx);
           types.push_back(type);
         } else {
           // lookup neighbour outputs
@@ -704,7 +704,7 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
   std::vector<mlir::Type> inputs;
   for (const auto &input : graph_proto.input()) {
     if (input.has_type()) {
-      inputs.push_back(OnnxToMlir_Type(input, mlirCtx.get()));
+      inputs.push_back(OnnxToMlir_Type(input, mlirCtx));
     } else {
       llvm::errs() << "ERROR: Type Not Specified.\n";
       exit(-1);
@@ -715,7 +715,7 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
   std::vector<mlir::Type> outputs;
   for (const auto &output : graph_proto.output()) {
     if (output.has_type()) {
-      outputs.push_back(OnnxToMlir_Type(output, mlirCtx.get()));
+      outputs.push_back(OnnxToMlir_Type(output, mlirCtx));
     } else {
       llvm::errs() << "ERROR: Type Not Specified.\n";
       exit(-1);
@@ -723,8 +723,8 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
   }
 
   // mlir graph main function
-  mlir::OpBuilder builder(mlirCtx.get());
-  auto funcType = mlir::FunctionType::get(mlirCtx.get(), inputs, outputs);
+  mlir::OpBuilder builder(mlirCtx);
+  auto funcType = mlir::FunctionType::get(mlirCtx, inputs, outputs);
   auto func = mlir::func::FuncOp::create(builder.getUnknownLoc(), "main",
                                          funcType, /*attr*/ {});
 
@@ -740,7 +740,7 @@ void ONNXImporter::parse_graph_io(const onnx::GraphProto &graph_proto) {
     func.setResultAttr(i, "onnx.name", attr);
   }
 
-  module->push_back(func);
+  module.push_back(func);
 }
 
 void ONNXImporter::import(const std::string &file_or_string,
@@ -750,13 +750,13 @@ void ONNXImporter::import(const std::string &file_or_string,
     verbose = true;
 
   // context setup
-  mlirCtx.reset(ctx);
+  mlirCtx = ctx;
   mlirCtx->loadDialect<mlir::affine::AffineDialect,
                        mlir::complex::ComplexDialect, mlir::func::FuncDialect,
                        mlir::sparse_tensor::SparseTensorDialect,
                        onnx2mlir::dialect::onnx::OnnxDialect>();
   // initialize the module
-  mlir::OpBuilder builder(mlirCtx.get());
+  mlir::OpBuilder builder(mlirCtx);
   module = mlir::ModuleOp::create(builder.getUnknownLoc());
 
   if (verbose) {
@@ -863,7 +863,7 @@ void ONNXImporter::import(const std::string &file_or_string,
   parse_graph_nodes(graph_proto);
 
   // verify module
-  if (llvm::failed(mlir::verify(*module))) {
+  if (llvm::failed(mlir::verify(module))) {
     llvm::errs() << "MLIR module verification failed.\n";
     exit(-1);
   }
