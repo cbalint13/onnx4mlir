@@ -38,7 +38,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
-#include <regex>
 #include <set>
 #include <string>
 #include <utility>
@@ -50,42 +49,6 @@
 #include "onnx_to_linalg.hpp"
 
 namespace onnx2mlir::dialect {
-
-static inline bool opNameBeginsWith(const llvm::StringRef &OpName,
-                                    const std::string &match) {
-  return std::regex_match(OpName.str(), std::regex("^onnx." + match + ".*"));
-}
-
-static inline bool opNameBeginsWith(const llvm::StringRef &opName,
-                                    const std::vector<std::string> &matches) {
-  for (const auto &match : matches) {
-    if (std::regex_match(opName.str(), std::regex("^onnx." + match + ".*"))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static inline bool isBroadcastNeeded(mlir::RankedTensorType operandType,
-                                     mlir::RankedTensorType resultType) {
-  if (!operandType || operandType == resultType) {
-    return false;
-  }
-  // Check if any dimension is different or if ranks are different.
-  if (operandType.getRank() != resultType.getRank())
-    return true;
-  for (int i = 0; i < operandType.getRank(); ++i) {
-    if (operandType.getDimSize(i) != resultType.getDimSize(i) &&
-        operandType.getDimSize(i) != 1) {
-      return true; // Mismatched non-one dimension means non-broadcastable
-    }
-    if (operandType.getDimSize(i) == 1 && resultType.getDimSize(i) != 1) {
-      return true; // Needs broadcasting a '1' dim
-    }
-  }
-  return false;
-}
-
 
 struct ONNXToLINALGLowering : public mlir::RewritePattern {
   explicit ONNXToLINALGLowering(mlir::MLIRContext *ctx)
@@ -104,7 +67,7 @@ struct ONNXToLINALGLowering : public mlir::RewritePattern {
     } else if (opNameBeginsWith(opName, "Transpose")) {
 #include "onnx_to_linalg/transpose.cpp"
     } else if (opNameBeginsWith(opName, {"Add", "Sub", "Mul", "Div", "Pow"})) {
-#include "onnx_to_linalg/binary.cpp"
+      return OnnxToLinalg_ArithBinaryOps(op, rewriter);
     } else if (opNameBeginsWith(opName, "Abs")) {
 #include "onnx_to_linalg/abs.cpp"
     } else if (opNameBeginsWith(opName, "Cast")) {

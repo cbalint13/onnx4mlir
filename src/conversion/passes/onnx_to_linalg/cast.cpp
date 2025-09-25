@@ -98,6 +98,8 @@ mlir::Value createArithCastOp(mlir::OpBuilder *builder,
 
 mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
                                         mlir::PatternRewriter &rewriter) {
+  auto opName = op->getName().getStringRef();
+
   mlir::Value inp = op->getOperand(0);
   mlir::Value res = op->getResult(0);
 
@@ -106,13 +108,13 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
 
   if (!inpType) {
     return rewriter.notifyMatchFailure(op,
-                                       "onnx.Cast input is not a tensor type");
+                                       opName + " input is not a tensor type");
   }
 
   auto toAttr = op->getAttr("to");
   if (!toAttr) {
     return rewriter.notifyMatchFailure(op,
-                                       "onnx.Cast is missing 'to' attribute");
+                                       opName + " is missing 'to' attribute");
   }
 
   mlir::Type tgtElemType = {};
@@ -123,12 +125,12 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
         OnnxToMlir_dType(strAttr.getValue().str(), rewriter.getContext());
   } else {
     return rewriter.notifyMatchFailure(
-        op, "onnx.Cast has invalid 'to' attribute type");
+        op, opName + " has invalid 'to' attribute type");
   }
 
   if (!tgtElemType || mlir::dyn_cast_or_null<mlir::NoneType>(tgtElemType)) {
     return rewriter.notifyMatchFailure(
-        op, "onnx.Cast unsupported `to` attribute value");
+        op, opName + " unsupported `to` attribute value");
   }
 
   // Set output type using 'to' attribute
@@ -136,7 +138,7 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
 
   if (outType != resType) {
     return rewriter.notifyMatchFailure(
-        op, "onnx.Cast 'to' data type not match the result type");
+        op, opName + " 'to' data type not match the result type");
   }
 
   mlir::Location loc = op->getLoc();
@@ -152,7 +154,7 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
     auto castResult = createArithCastOp(&rewriter, loc, inp, tgtElemType);
     if (!castResult) {
       return rewriter.notifyMatchFailure(
-          op, "onnx.Cast unsupported scalar conversion");
+          op, opName + " unsupported scalar conversion");
     }
     rewriter.replaceOp(op, castResult);
     return mlir::success();
@@ -192,14 +194,12 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
     if (genericOp) {
       genericOp.erase();
     }
-    return rewriter.notifyMatchFailure(op,
-                                       "onnx.Cast unsupported element type "
-                                       "conversion within linalg.generic body");
+    return rewriter.notifyMatchFailure(
+        op, opName + " unsupported element type within linalg.generic body");
   }
 
   // Tag for transform optimization
-  genericOp->setAttr("transform.target_tag",
-                     rewriter.getStringAttr("onnx.Cast"));
+  genericOp->setAttr("transform.target_tag", rewriter.getStringAttr(opName));
 
   rewriter.replaceOp(op, genericOp);
 

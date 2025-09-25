@@ -70,7 +70,7 @@ def runner(module, func_entry, inputs, outputs):
     inp_cargs = [ctypes.pointer(ctypes.pointer(inp)) for inp in inp_descs]
     out_cargs = [ctypes.pointer(ctypes.pointer(out)) for out in out_descs]
 
-    all_cargs = inp_cargs + out_cargs
+    all_cargs = out_cargs + inp_cargs
     engine.invoke(func_entry, *all_cargs)
 
     outputs = [ranked_memref_to_numpy(carg[idx]) for idx, carg in enumerate(out_cargs)]

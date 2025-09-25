@@ -34,6 +34,8 @@
 #include <mlir/Pass/Pass.h>
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace mlir {
 #define GEN_PASS_DEF_LOWERONNXTOLINALGPASS
@@ -48,6 +50,19 @@ namespace onnx2mlir::dialect {
  */
 void registerLowerONNXToLINALGPass();
 std::unique_ptr<mlir::Pass> createLowerONNXToLINALGPass();
+
+/*
+ * Common utilities
+ *
+ */
+
+bool opNameBeginsWith(const llvm::StringRef &OpName, const std::string &match);
+
+bool opNameBeginsWith(const llvm::StringRef &opName,
+                      const std::vector<std::string> &matches);
+
+mlir::RankedTensorType getBroadcastShape(mlir::RankedTensorType lhsType,
+                                         mlir::RankedTensorType rhsType);
 
 } // namespace onnx2mlir::dialect
 

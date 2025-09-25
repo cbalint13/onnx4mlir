@@ -30,12 +30,18 @@
 #ifndef SRC_CONVERSION_PASSES_ONNX_TO_LINALG_HPP_
 #define SRC_CONVERSION_PASSES_ONNX_TO_LINALG_HPP_
 
+#include <mlir/IR/PatternMatch.h>
+
 namespace onnx2mlir::dialect {
 
 /*
  *  Onnx to Linalg Operator conversions
  *
  */
+
+// onnx.{Add, Sub, Mul, Div, Pow}
+mlir::LogicalResult OnnxToLinalg_ArithBinaryOps(mlir::Operation *op,
+                                                mlir::PatternRewriter &rewriter);
 
 // onnx.CastOp
 mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
@@ -50,10 +56,10 @@ mlir::LogicalResult OnnxToLinalg_ConstantOp(mlir::Operation *op,
  *
  */
 
-mlir::Value
-createArithCastOp(mlir::OpBuilder *builder, const mlir::Location &loc,
-                  const mlir::Value &inputElement,
-                  const mlir::Type &targetElementType);
+mlir::Value createArithCastOp(mlir::OpBuilder *builder,
+                              const mlir::Location &loc,
+                              const mlir::Value &inputElement,
+                              const mlir::Type &targetElementType);
 
 } // namespace onnx2mlir::dialect
 

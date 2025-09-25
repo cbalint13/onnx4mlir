@@ -30,6 +30,8 @@
 #ifndef INCLUDE_ONNX2MLIR_COMMON_ONNX_HPP_
 #define INCLUDE_ONNX2MLIR_COMMON_ONNX_HPP_
 
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Types.h>
 #include <onnx/defs/parser.h>
 #include <onnx/onnx_pb.h>
 
