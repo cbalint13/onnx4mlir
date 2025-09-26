@@ -40,16 +40,28 @@ namespace onnx2mlir::dialect {
  */
 
 // onnx.{Add, Sub, Mul, Div, Pow}
-mlir::LogicalResult OnnxToLinalg_ArithBinaryOps(mlir::Operation *op,
-                                                mlir::PatternRewriter &rewriter);
+mlir::LogicalResult
+OnnxToLinalg_ArithBinaryOps(mlir::Operation *op,
+                            mlir::PatternRewriter &rewriter);
 
-// onnx.CastOp
+// onnx.{Abs, Acos, Acosh, Asin, Asinh, Atan, Atanh, Ceil, Cos, Cosh, Elu,
+//       Erf, Exp, Floor, HardSwish, Identity, IsInf, IsNaN, Log, Neg, Not
+//       Reciprocal, Relu, Round, Sigmoid, Sign, Sin, Sinh, Softplus, Softsign,
+//       Sqrt, Tan, Tanh}
+mlir::LogicalResult OnnxToLinalg_ArithUnaryOps(mlir::Operation *op,
+                                               mlir::PatternRewriter &rewriter);
+
+// onnx.Cast
 mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
                                         mlir::PatternRewriter &rewriter);
 
-// onnx.ConstantOp
+// onnx.Constant
 mlir::LogicalResult OnnxToLinalg_ConstantOp(mlir::Operation *op,
                                             mlir::PatternRewriter &rewriter);
+
+// onnx.Softmax
+mlir::LogicalResult OnnxToLinalg_SoftmaxOp(mlir::Operation *op,
+                                           mlir::PatternRewriter &rewriter);
 
 /*
  * Helpers

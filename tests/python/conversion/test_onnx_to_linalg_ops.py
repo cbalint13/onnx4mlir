@@ -126,15 +126,15 @@ def test_onnx_Cast_lower(ONNX_OPSET_VERSION):
 
     def create_onnx_model(np_array):
         input_tensor = make_tensor_value_info(
-            "input_tensor", TensorProto.FLOAT, np_array.shape
+            "input", TensorProto.FLOAT, np_array.shape
         )
         output_tensor = make_tensor_value_info(
-            "output_tensor", TensorProto.INT32, np_array.shape
+            "output", TensorProto.INT32, np_array.shape
         )
         cast_node = make_node(
             "Cast",
-            ["input_tensor"],
-            ["output_tensor"],
+            ["input"],
+            ["output"],
             to=TensorProto.INT32 if ONNX_OPSET_VERSION > 1 else "INT32",
         )
         graph = make_graph(
@@ -179,21 +179,21 @@ def test_onnx_Add_lower(ONNX_OPSET_VERSION):
     Test ONNX AddOp lower.
     """
 
-    def create_onnx_model(inp_array0, inp_array1, res_array):
+    def create_onnx_model(inp_array0, inp_array1):
         input_tensor_0 = make_tensor_value_info(
-            "input_tensor_0", TensorProto.FLOAT, inp_array0.shape
+            "input0", TensorProto.FLOAT, inp_array0.shape
         )
         input_tensor_1 = make_tensor_value_info(
-            "input_tensor_1", TensorProto.FLOAT, inp_array1.shape
+            "input1", TensorProto.FLOAT, inp_array1.shape
         )
         output_tensor = make_tensor_value_info(
-            "output_tensor", TensorProto.FLOAT, res_array.shape
+            "output", TensorProto.FLOAT, (inp_array0 + inp_array1).shape
         )
         arith_node = make_node(
             "Add",
             # binary arg
-            ["input_tensor_0", "input_tensor_1"],
-            ["output_tensor"],
+            ["input0", "input1"],
+            ["output"],
         )
         graph = make_graph(
             nodes=[arith_node],
@@ -210,22 +210,135 @@ def test_onnx_Add_lower(ONNX_OPSET_VERSION):
     inp_array0 = np.random.rand(1, 3, 1).astype(np.float32)
     inp_array1 = np.random.rand(4, 1, 5).astype(np.float32)
 
-    expected_result = np.add(inp_array0, inp_array1)
-    res_array = np.zeros(expected_result.shape, dtype=np.float32)
-    onnx_model = create_onnx_model(inp_array0, inp_array1, res_array)
+    onnx_model = create_onnx_model(inp_array0, inp_array1)
 
     ref = ReferenceEvaluator(onnx_model)
-    onnx_results = ref.run(
-        None, {"input_tensor_0": inp_array0, "input_tensor_1": inp_array1}
-    )
-    np.testing.assert_allclose(onnx_results[0], expected_result, atol=1e-3)
+    onnx_result = ref.run(None, {"input0": inp_array0, "input1": inp_array1})[0]
 
     with Context() as ctx, Location.unknown():
 
         mlir_module = import_from_onnx(onnx_model, ctx)
         mlir_module.operation.verify()
+
         llvm_module = llvm_lower_pipeline(mlir_module)
         llvm_module.operation.verify()
 
+        res_array = np.zeros_like(onnx_result)
         outputs = runner(llvm_module, "main", [inp_array0, inp_array1], [res_array])
-        np.testing.assert_allclose(outputs[0], expected_result, atol=1e-3)
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "ONNX_OPSET_VERSION",
+    [
+        schema.since_version
+        for schema in get_all_schemas_with_history()
+        if "Sin" == schema.name
+    ],
+)
+def test_onnx_Sin_lower(ONNX_OPSET_VERSION):
+    """
+    Test ONNX SinOp lower.
+    """
+
+    def create_onnx_model(np_array):
+        input_tensor = make_tensor_value_info(
+            "input", TensorProto.FLOAT, np_array.shape
+        )
+        output_tensor = make_tensor_value_info(
+            "output", TensorProto.FLOAT, np_array.shape
+        )
+        cast_node = make_node(
+            "Sin",
+            ["input"],
+            ["output"],
+        )
+        graph = make_graph(
+            nodes=[cast_node],
+            name="arith_graph",
+            inputs=[input_tensor],
+            outputs=[output_tensor],
+            initializer=[],
+        )
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
+
+    np_array = np.random.rand(2, 2).astype(np.float32)
+    onnx_model = create_onnx_model(np_array)
+
+    ref = ReferenceEvaluator(onnx_model)
+    onnx_result = ref.run(None, {"input": np_array})[0]
+
+    with Context() as ctx, Location.unknown():
+
+        mlir_module = import_from_onnx(onnx_model, ctx)
+        mlir_module.operation.verify()
+
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
+
+        output = np.zeros_like(np_array)
+        outputs = runner(llvm_module, "main", [np_array], [output])
+
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "ONNX_OPSET_VERSION",
+    [
+        schema.since_version
+        for schema in get_all_schemas_with_history()
+        if "Softmax" == schema.name
+    ],
+)
+def test_onnx_Softmax_lower(ONNX_OPSET_VERSION):
+    """
+    Test ONNX Softmax lower.
+    """
+
+    def create_onnx_model(np_array):
+        input_tensor = make_tensor_value_info(
+            "input", TensorProto.FLOAT, np_array.shape
+        )
+        output_tensor = make_tensor_value_info(
+            "output", TensorProto.FLOAT, np_array.shape
+        )
+        cast_node = make_node(
+            "Softmax",
+            # i/o
+            ["input"],
+            ["output"],
+            axis=1,
+        )
+        graph = make_graph(
+            nodes=[cast_node],
+            name="softmax_graph",
+            inputs=[input_tensor],
+            outputs=[output_tensor],
+            initializer=[],
+        )
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
+
+    np_array = np.random.rand(8, 8).astype(np.float32)
+    onnx_model = create_onnx_model(np_array)
+
+    ref = ReferenceEvaluator(onnx_model)
+    onnx_result = ref.run(None, {"input": np_array})[0]
+
+    with Context() as ctx, Location.unknown():
+
+        mlir_module = import_from_onnx(onnx_model, ctx)
+        mlir_module.operation.verify()
+
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
+
+        output = np.zeros_like(np_array)
+        outputs = runner(llvm_module, "main", [np_array], [output])
+
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)

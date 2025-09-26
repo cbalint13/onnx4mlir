@@ -68,8 +68,21 @@ struct ONNXToLINALGLowering : public mlir::RewritePattern {
 #include "onnx_to_linalg/transpose.cpp"
     } else if (opNameBeginsWith(opName, {"Add", "Sub", "Mul", "Div", "Pow"})) {
       return OnnxToLinalg_ArithBinaryOps(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Abs")) {
-#include "onnx_to_linalg/abs.cpp"
+    } else if (opNameBeginsWith( // clang-format off
+        opName,
+        {"Abs",      "Acos",       "Acosh",     "Asin",
+         "Asinh",    "Atan",       "Atanh",     "Ceil",
+         "Cos",      "Cosh",       "Elu",       "Erf",
+         "Exp",      "Floor",      "HardSwish", "Identity",
+         "IsInf",    "IsNaN",      "Log",       "Neg",
+         "Not",      "Reciprocal", "Relu",      "Round",
+         "Sign",     "Sigmoid",    "Sin",       "Sinh",
+         "Softplus", "Softsign",   "Sqrt",      "Tan",
+         "Tanh"
+        })) { // clang-format on
+      return OnnxToLinalg_ArithUnaryOps(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Softmax")) {
+      return OnnxToLinalg_SoftmaxOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "Cast")) {
       return OnnxToLinalg_CastOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "Greater")) {

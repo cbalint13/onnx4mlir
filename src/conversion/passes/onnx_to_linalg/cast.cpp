@@ -161,7 +161,7 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
   }
 
   // 1. Create an empty tensor for the output
-  mlir::Value outBuffer = rewriter.create<mlir::tensor::EmptyOp>(
+  mlir::Value outBuff = rewriter.create<mlir::tensor::EmptyOp>(
       loc, inpType.getShape(), tgtElemType);
 
   // 2. Create the linalg.generic operation
@@ -170,30 +170,26 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
     iterators.push_back(mlir::utils::IteratorType::parallel);
   }
 
-  mlir::SmallVector<mlir::AffineMap> indexingMaps;
-  indexingMaps.push_back(rewriter.getMultiDimIdentityMap(inpType.getRank()));
-  indexingMaps.push_back(rewriter.getMultiDimIdentityMap(inpType.getRank()));
+  mlir::SmallVector<mlir::AffineMap> idxMaps;
+  idxMaps.push_back(rewriter.getMultiDimIdentityMap(inpType.getRank()));
+  idxMaps.push_back(rewriter.getMultiDimIdentityMap(inpType.getRank()));
 
   bool bodyBuildFailed = false;
   auto genericOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, outType, mlir::ValueRange{inp}, mlir::ValueRange{outBuffer},
-      indexingMaps, iterators,
-      [&](mlir::OpBuilder nestedBuilder, mlir::Location nestedLoc,
-          mlir::ValueRange args) {
-        mlir::Value inpElem = args[0];
-        mlir::Value castResult =
-            createArithCastOp(&nestedBuilder, nestedLoc, inpElem, tgtElemType);
-        if (!castResult) {
+      loc, outType, mlir::ValueRange{inp}, mlir::ValueRange{outBuff},
+      idxMaps, iterators,
+      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
+        mlir::Value outOp = createArithCastOp(&nest, loc, args[0], tgtElemType);
+        if (!outOp) {
           bodyBuildFailed = true;
           return;
         }
-        nestedBuilder.create<mlir::linalg::YieldOp>(nestedLoc, castResult);
+        nest.create<mlir::linalg::YieldOp>(loc, outOp);
       });
 
   if (bodyBuildFailed) {
-    if (genericOp) {
+    if (genericOp)
       genericOp.erase();
-    }
     return rewriter.notifyMatchFailure(
         op, opName + " unsupported element type within linalg.generic body");
   }
