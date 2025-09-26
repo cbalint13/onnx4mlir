@@ -90,17 +90,18 @@ OnnxToLinalg_ArithBinaryOps(mlir::Operation *op,
   mlir::Value outBuff = rewriter.create<mlir::tensor::EmptyOp>(
       op->getLoc(), resType.getShape(), resType.getElementType());
 
-  // Create indexing maps for the generic op
-  llvm::SmallVector<mlir::AffineMap, 4> indexingMaps;
+  // Create indexing maps for the elementwise op
+  llvm::SmallVector<mlir::AffineMap, 4> idxMaps;
   mlir::AffineMap lhsMap, rhsMap, resMap;
 
   // Create identity map for the result
   resMap = rewriter.getMultiDimIdentityMap(resType.getRank());
 
-  // Create the map for the LHS
-  llvm::SmallVector<mlir::AffineExpr, 4> lhsExprs;
   mlir::Builder builder(op->getContext());
   mlir::AffineExpr zero = builder.getAffineConstantExpr(0);
+
+  // Create the map for the LHS
+  llvm::SmallVector<mlir::AffineExpr, 4> lhsExprs;
   for (unsigned i = 0; i < resType.getRank(); ++i) {
     int64_t lhsDimIndex = lhsType.getRank() - (resType.getRank() - i);
     if (lhsType.getRank() < resType.getRank() - i ||
@@ -127,50 +128,43 @@ OnnxToLinalg_ArithBinaryOps(mlir::Operation *op,
   rhsMap = mlir::AffineMap::get(resType.getRank(), 0, rhsExprs,
                                 builder.getContext());
 
-  indexingMaps.push_back(lhsMap);
-  indexingMaps.push_back(rhsMap);
-  indexingMaps.push_back(resMap);
+  idxMaps.push_back(lhsMap);
+  idxMaps.push_back(rhsMap);
+  idxMaps.push_back(resMap);
 
-  // Create the arith op with linalg.generic
-  auto genericOp = rewriter.create<mlir::linalg::GenericOp>(
-      op->getLoc(), resType, mlir::ValueRange{lhs, rhs},
-      mlir::ValueRange{outBuff}, indexingMaps,
-      llvm::SmallVector<mlir::utils::IteratorType>(
-          resType.getRank(), mlir::utils::IteratorType::parallel),
-      [&](mlir::OpBuilder &nest, mlir::Location loc, mlir::ValueRange vals) {
-        mlir::Value outOp;
-        if (mlir::isa<mlir::FloatType>(resType.getElementType())) {
-          if (opNameBeginsWith(opName, "Add"))
-            outOp = nest.create<mlir::arith::AddFOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Sub"))
-            outOp = nest.create<mlir::arith::SubFOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Mul"))
-            outOp = nest.create<mlir::arith::MulFOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Div"))
-            outOp = nest.create<mlir::arith::DivFOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Pow"))
-            outOp = nest.create<mlir::math::PowFOp>(loc, vals[0], vals[1]);
-        } else {
-          if (opNameBeginsWith(opName, "Add"))
-            outOp = nest.create<mlir::arith::AddIOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Sub"))
-            outOp = nest.create<mlir::arith::SubIOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Mul"))
-            outOp = nest.create<mlir::arith::MulIOp>(loc, vals[0], vals[1]);
-          if (opNameBeginsWith(opName, "Div")) {
-            if (resType.getElementType().isUnsignedInteger())
-              outOp = nest.create<mlir::arith::DivUIOp>(loc, vals[0], vals[1]);
-            if (resType.getElementType().isSignedInteger())
-              outOp = nest.create<mlir::arith::DivSIOp>(loc, vals[0], vals[1]);
-          }
-        }
-        nest.create<mlir::linalg::YieldOp>(loc, outOp);
-      });
+  auto idxMapsAttr = rewriter.getAffineMapArrayAttr(idxMaps);
+
+  mlir::linalg::ElementwiseKind kindEnum;
+  if (opNameBeginsWith(opName, "Add")) {
+    kindEnum = mlir::linalg::ElementwiseKind::add;
+  } else if (opNameBeginsWith(opName, "Sub")) {
+    kindEnum = mlir::linalg::ElementwiseKind::sub;
+  } else if (opNameBeginsWith(opName, "Mul")) {
+    kindEnum = mlir::linalg::ElementwiseKind::mul;
+  } else if (opNameBeginsWith(opName, "Div")) {
+    kindEnum = mlir::linalg::ElementwiseKind::div;
+  } else if (opNameBeginsWith(opName, "Pow")) {
+    if (mlir::isa<mlir::FloatType>(resType.getElementType()))
+      kindEnum = mlir::linalg::ElementwiseKind::powf;
+    else
+      return rewriter.notifyMatchFailure(
+          op, opName + " supports only float element types");
+  } else {
+    return rewriter.notifyMatchFailure(
+        op, opName + " is unsupported for linalg.elementwise operation");
+  }
+
+  auto kindAttr =
+      mlir::linalg::ElementwiseKindAttr::get(op->getContext(), kindEnum);
+
+  auto elmwiseOp = rewriter.create<mlir::linalg::ElementwiseOp>(
+      op->getLoc(), mlir::ValueRange{lhs, rhs}, mlir::ValueRange{outBuff},
+      kindAttr, idxMapsAttr);
 
   // Tag for transform optimization
-  genericOp->setAttr("transform.target_tag", rewriter.getStringAttr(opName));
+  elmwiseOp->setAttr("transform.target_tag", rewriter.getStringAttr(opName));
 
-  rewriter.replaceOp(op, genericOp);
+  rewriter.replaceOp(op, elmwiseOp);
 
   return mlir::success();
 }
