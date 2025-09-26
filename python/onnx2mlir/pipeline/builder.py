@@ -79,7 +79,7 @@ def set_module_signatures(module):
     return module
 
 
-def llvm_lower_pipeline(module, signatures=False):
+def llvm_lower_pipeline(module, signatures=False, affine_loops=True):
     """Convert high level IR to final LLVM module
 
     Parameters
@@ -89,6 +89,9 @@ def llvm_lower_pipeline(module, signatures=False):
 
     signatures:
       Add function info signatures visible after lowering.
+
+    affine_loops:
+      Lower to affine loops instead of scf loops.
 
     Returns:
     --------
@@ -102,31 +105,59 @@ def llvm_lower_pipeline(module, signatures=False):
     register_onnx_to_linag_pass()
 
     pm = PassManager()
+
+    # 1. High level conversion
     pm.add("lower-onnx-to-linalg")
-    pm.add("func.func(llvm-request-c-wrappers)")
+    # pm.add("generate-runtime-verification")
     pm.add("linalg-generalize-named-ops")
+
+    # 2. Optimization
     pm.add("linalg-fuse-elementwise-ops")
+    pm.add("inline")
+
+    # 3. Bufferization & sparsification
     pm.add("sparse-assembler")
     pm.add("sparsification-and-bufferization")
-    pm.add("sparse-storage-specifier-to-llvm")
-    pm.add("one-shot-bufferize")
-    pm.add("buffer-deallocation-pipeline")
-    pm.add("inline")
-    pm.add("lower-affine")
+    pm.add("func.func(buffer-hoisting)")
+    pm.add("func.func(buffer-loop-hoisting)")
+    pm.add("func.func(promote-buffers-to-stack)")
+
+    # 4. Loop lowering
+    if affine_loops:
+        pm.add("convert-linalg-to-affine-loops")
+        pm.add("lower-affine")
+    else:
+        pm.add("convert-linalg-to-loops")
+
+    # 5. Loop optimization
+    pm.add("loop-invariant-code-motion")
+    pm.add("loop-invariant-subset-hoisting")
+
+    # 6. General optimization
+    pm.add("canonicalize")
+    pm.add("cse")
+
+    # 7. Memory lowering
     pm.add("arith-expand")
     pm.add("expand-realloc")
     pm.add("expand-strided-metadata")
+
+    # 8. Low level conversions
+    pm.add("func.func(llvm-request-c-wrappers)")
+    pm.add("buffer-deallocation-pipeline")
+    pm.add("sparse-storage-specifier-to-llvm")
+    pm.add("symbol-dce")
+
+    # 9. Final conversions
     pm.add("convert-shape-to-std")
-    pm.add("convert-linalg-to-loops")
     pm.add("convert-scf-to-cf")
-    # pm.add("generate-runtime-verification")
+    pm.add("convert-cf-to-llvm")
     pm.add("convert-math-to-llvm")
-    pm.add("convert-bufferization-to-memref")
     pm.add("convert-arith-to-llvm")
     pm.add("convert-complex-to-llvm")
     pm.add("convert-vector-to-llvm")
     pm.add("convert-func-to-llvm")
-    pm.add("convert-cf-to-llvm")
+    pm.add("convert-bufferization-to-memref")
     pm.add("finalize-memref-to-llvm")
     pm.add("reconcile-unrealized-casts")
 
