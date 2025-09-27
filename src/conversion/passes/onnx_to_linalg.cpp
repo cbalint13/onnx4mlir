@@ -89,8 +89,11 @@ struct ONNXToLINALGLowering : public mlir::RewritePattern {
       return OnnxToLinalg_LogSoftmaxOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "Cast")) {
       return OnnxToLinalg_CastOp(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Greater")) {
-#include "onnx_to_linalg/greater.cpp"
+    } else if (opNameBeginsWith( // clang-format off
+        opName, {
+        "Equal", "Greater", "GreatherOrEqual", "Less", "LessOrEqual",
+        })) { // clang-format on
+      return OnnxToLinalg_CompBinaryOps(op, rewriter);
     } else if (opNameBeginsWith(opName, "Where")) {
 #include "onnx_to_linalg/where.cpp"
     } else if (opNameBeginsWith(opName, "MaxPool")) {

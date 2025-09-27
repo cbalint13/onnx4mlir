@@ -55,6 +55,10 @@ mlir::LogicalResult OnnxToLinalg_ArithUnaryOps(mlir::Operation *op,
 mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
                                         mlir::PatternRewriter &rewriter);
 
+// onnx.{Equal, Greater, GreatherOrEqual, Less, LessOrEqual}
+mlir::LogicalResult OnnxToLinalg_CompBinaryOps(mlir::Operation *op,
+                                               mlir::PatternRewriter &rewriter);
+
 // onnx.Constant
 mlir::LogicalResult OnnxToLinalg_ConstantOp(mlir::Operation *op,
                                             mlir::PatternRewriter &rewriter);

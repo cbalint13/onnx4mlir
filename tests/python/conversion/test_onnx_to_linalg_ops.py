@@ -175,7 +175,7 @@ def test_onnx_Cast_lower(ONNX_OPSET_VERSION):
         if schema.name in ["Add", "Sub", "Mul", "Div", "Pow"]
     ],
 )
-def test_onnx_binary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
+def test_onnx_arith_binary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
     """
     Test ONNX arith binary operators lowering.
     """
@@ -405,4 +405,66 @@ def test_onnx_transpose_lower(ONNX_OPSET_VERSION):
         output = np.zeros_like(np_array)
         outputs = runner(llvm_module, "main", [np_array], [output])
 
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "ONNX_OP_NAME, ONNX_OPSET_VERSION",
+    [
+        (schema.name, schema.since_version)
+        for schema in get_all_schemas_with_history()
+        if schema.name in ["Greather", "GreatherOrEqual", "Less", "LessOrEqual"]
+    ],
+)
+def test_onnx_compare_binary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
+    """
+    Test ONNX comparison binary operators lowering.
+    """
+
+    def create_onnx_model(inp_array0, inp_array1):
+        input_tensor_0 = make_tensor_value_info(
+            "input0", TensorProto.FLOAT, inp_array0.shape
+        )
+        input_tensor_1 = make_tensor_value_info(
+            "input1", TensorProto.FLOAT, inp_array1.shape
+        )
+        output_tensor = make_tensor_value_info(
+            "output", TensorProto.BOOL, (inp_array0 + inp_array1).shape
+        )
+        arith_node = make_node(
+            ONNX_OP_NAME,
+            # binary arg
+            ["input0", "input1"],
+            ["output"],
+        )
+        graph = make_graph(
+            nodes=[arith_node],
+            name="compare_graph",
+            inputs=[input_tensor_0, input_tensor_1],
+            outputs=[output_tensor],
+            initializer=[],
+        )
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
+
+    inp_array0 = np.random.rand(1, 3, 1).astype(np.float32)
+    inp_array1 = np.random.rand(4, 1, 5).astype(np.float32)
+
+    onnx_model = create_onnx_model(inp_array0, inp_array1)
+
+    ref = ReferenceEvaluator(onnx_model)
+    onnx_result = ref.run(None, {"input0": inp_array0, "input1": inp_array1})[0]
+
+    with Context() as ctx, Location.unknown():
+
+        mlir_module = import_from_onnx(onnx_model, ctx)
+        mlir_module.operation.verify()
+
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
+
+        res_array = np.zeros_like(onnx_result)
+        outputs = runner(llvm_module, "main", [inp_array0, inp_array1], [res_array])
         np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
