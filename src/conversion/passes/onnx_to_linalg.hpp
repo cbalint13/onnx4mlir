@@ -58,6 +58,9 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
 // onnx.Constant
 mlir::LogicalResult OnnxToLinalg_ConstantOp(mlir::Operation *op,
                                             mlir::PatternRewriter &rewriter);
+// onnx.Hardmax
+mlir::LogicalResult OnnxToLinalg_HardmaxOp(mlir::Operation *op,
+                                           mlir::PatternRewriter &rewriter);
 
 // onnx.LogSoftmax
 mlir::LogicalResult OnnxToLinalg_LogSoftmaxOp(mlir::Operation *op,

@@ -61,7 +61,7 @@ from onnx2mlir.pipeline import llvm_lower_pipeline, runner
         if "Constant" == schema.name
     ],
 )
-def test_onnx_ConstantOp_lower(ONNX_OPSET_VERSION):
+def test_onnx_Constant_lower(ONNX_OPSET_VERSION):
     """
     Test ONNX Constant lowering.
     """
@@ -290,7 +290,7 @@ def test_onnx_unary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
     [
         (schema.name, schema.since_version)
         for schema in get_all_schemas_with_history()
-        if schema.name in ["Softmax", "LogSoftmax"]
+        if schema.name in ["Hardmax", "Softmax", "LogSoftmax"]
     ],
 )
 def test_onnx_softmax_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):

@@ -81,6 +81,8 @@ struct ONNXToLINALGLowering : public mlir::RewritePattern {
          "Tanh"
         })) { // clang-format on
       return OnnxToLinalg_ArithUnaryOps(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Hardmax")) {
+      return OnnxToLinalg_HardmaxOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "Softmax")) {
       return OnnxToLinalg_SoftmaxOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "LogSoftmax")) {

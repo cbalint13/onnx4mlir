@@ -392,35 +392,32 @@ mlir::LogicalResult OnnxToLinalg_SoftmaxOp(mlir::Operation *op,
     return rewriter.notifyMatchFailure(op, opName + " invalid axis");
   }
 
-  // Define parallel iterators once for reuse
+  // parallel iterators once
   mlir::SmallVector<mlir::utils::IteratorType> parallel_iterators(
       rank, mlir::utils::IteratorType::parallel);
 
-  // Find the maximum value along the axis for numerical stability
-  mlir::SmallVector<int64_t> max_shape;
-  mlir::SmallVector<mlir::AffineExpr> max_outputMapExprs;
+  // map and shape definitions
+  mlir::SmallVector<int64_t> reduce_shape;
+  mlir::SmallVector<mlir::AffineExpr> reduce_outputMapExprs;
   for (int i = 0; i < rank; ++i) {
     if (i != axis) {
-      max_shape.push_back(inpType.getShape()[i]);
-      max_outputMapExprs.push_back(rewriter.getAffineDimExpr(i));
+      reduce_shape.push_back(inpType.getShape()[i]);
+      reduce_outputMapExprs.push_back(rewriter.getAffineDimExpr(i));
     }
   }
-  auto maxType = mlir::RankedTensorType::get(max_shape, inpElmType);
+  auto reduceType = mlir::RankedTensorType::get(reduce_shape, inpElmType);
 
-  mlir::SmallVector<mlir::utils::IteratorType> max_reduce_iterators;
-  for (int i = 0; i < rank; ++i) {
-    max_reduce_iterators.push_back((i == axis)
-                                       ? mlir::utils::IteratorType::reduction
-                                       : mlir::utils::IteratorType::parallel);
-  }
+  // affine maps for broadcasting
+  mlir::AffineMap reduce_broadcast_map =
+      mlir::AffineMap::get(rank, 0, reduce_outputMapExprs, ctx);
 
-  mlir::SmallVector<mlir::AffineMap> max_maps;
-  max_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  max_maps.push_back(mlir::AffineMap::get(rank, 0, max_outputMapExprs, ctx));
+  // attribute for reduction dims [axis]
+  mlir::SmallVector<int64_t> dims = {axis};
+  auto dimsAttr = rewriter.getDenseI64ArrayAttr(dims);
 
-  // 1. Max Reduction (over axis)
+  // 1. Max Reduction (find row-wise max for stability)
   auto maxTBuff =
-      rewriter.create<mlir::tensor::EmptyOp>(loc, max_shape, inpElmType);
+      rewriter.create<mlir::tensor::EmptyOp>(loc, reduce_shape, inpElmType);
   auto fltType = mlir::cast<mlir::FloatType>(inpElmType);
   mlir::Value negInf = rewriter.create<mlir::arith::ConstantOp>(
       loc, rewriter.getFloatAttr(
@@ -430,90 +427,69 @@ mlir::LogicalResult OnnxToLinalg_SoftmaxOp(mlir::Operation *op,
       rewriter.create<mlir::linalg::FillOp>(loc, negInf, maxTBuff.getResult())
           .getResult(0);
 
-  auto maxOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, maxType, mlir::ValueRange{inp}, mlir::ValueRange{maxBuff}, max_maps,
-      max_reduce_iterators,
+  auto maxOp = rewriter.create<mlir::linalg::ReduceOp>(
+      loc, mlir::ValueRange{inp}, mlir::ValueRange{maxBuff}, dimsAttr,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
         mlir::Value result =
             nest.create<mlir::arith::MaximumFOp>(loc, args[0], args[1]);
         nest.create<mlir::linalg::YieldOp>(loc, result);
       });
+  mlir::Value maxVal = maxOp.getResult(0);
 
-  // 2. Subtract the max from the input
-  auto subTBuff = rewriter.create<mlir::tensor::EmptyOp>(
-      loc, inpType.getShape(), inpElmType);
+  // 2. Subtraction (x - max(x)) and Exponentiation (e^(x - max(x)))
+  mlir::SmallVector<mlir::AffineMap> exp_maps;
+  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
+  exp_maps.push_back(reduce_broadcast_map);
+  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
 
-  mlir::SmallVector<mlir::AffineMap> sub_maps;
-  sub_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  sub_maps.push_back(mlir::AffineMap::get(rank, 0, max_outputMapExprs, ctx));
-  sub_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-
-  auto subOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{inp, maxOp.getResult(0)},
-      mlir::ValueRange{subTBuff}, sub_maps, parallel_iterators,
-      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value subX =
-            nest.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
-        nest.create<mlir::linalg::YieldOp>(loc, subX);
-      });
-
-  // 3. Exponentiation (Element-wise e^x)
   auto expTBuff = rewriter.create<mlir::tensor::EmptyOp>(
       loc, inpType.getShape(), inpElmType);
 
-  mlir::SmallVector<mlir::AffineMap> exp_maps;
-  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-
   auto expOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{subOp.getResult(0)},
-      mlir::ValueRange{expTBuff}, exp_maps, parallel_iterators,
+      loc, inpType, mlir::ValueRange{inp, maxVal},
+      mlir::ValueRange{expTBuff.getResult()}, exp_maps, parallel_iterators,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value expX = nest.create<mlir::math::ExpOp>(loc, args[0]);
+        mlir::Value diff =
+            nest.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
+        mlir::Value expX = nest.create<mlir::math::ExpOp>(loc, diff);
         nest.create<mlir::linalg::YieldOp>(loc, expX);
       });
+  mlir::Value expVal = expOp.getResult(0);
 
-  // 4. Reduction (over axis)
+  // 3. Sum Reduction (row-wise sum of exp values)
   auto sumTBuff =
-      rewriter.create<mlir::tensor::EmptyOp>(loc, max_shape, inpElmType);
+      rewriter.create<mlir::tensor::EmptyOp>(loc, reduce_shape, inpElmType);
   mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(
       loc, rewriter.getFloatAttr(inpElmType, 0.0));
   mlir::Value sumBuff =
       rewriter.create<mlir::linalg::FillOp>(loc, zero, sumTBuff.getResult())
           .getResult(0);
 
-  auto sumOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, maxType, mlir::ValueRange{expOp.getResult(0)},
-      mlir::ValueRange{sumBuff}, max_maps, max_reduce_iterators,
+  auto sumOp = rewriter.create<mlir::linalg::ReduceOp>(
+      loc, mlir::ValueRange{expVal}, mlir::ValueRange{sumBuff}, dimsAttr,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
         mlir::Value result =
             nest.create<mlir::arith::AddFOp>(loc, args[0], args[1]);
         nest.create<mlir::linalg::YieldOp>(loc, result);
       });
+  mlir::Value sumVal = sumOp.getResult(0);
 
-  // 5. Normalization (e^x / sum)
+  // 4. Final Normalization (element-wise div)
   auto outBuff = rewriter.create<mlir::tensor::EmptyOp>(loc, inpType.getShape(),
                                                         inpElmType);
 
   mlir::SmallVector<mlir::AffineMap> norm_maps;
   norm_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  mlir::SmallVector<mlir::AffineExpr> norm_inpMapExprs;
-  for (int i = 0; i < rank; ++i) {
-    if (i != axis) {
-      norm_inpMapExprs.push_back(rewriter.getAffineDimExpr(i));
-    }
-  }
-  norm_maps.push_back(mlir::AffineMap::get(rank, 0, norm_inpMapExprs, ctx));
+  norm_maps.push_back(reduce_broadcast_map);
   norm_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
 
-  auto normOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{expOp.getResult(0), sumOp.getResult(0)},
-      mlir::ValueRange{outBuff}, norm_maps, parallel_iterators,
-      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value result =
-            nest.create<mlir::arith::DivFOp>(loc, args[0], args[1]);
-        nest.create<mlir::linalg::YieldOp>(loc, result);
-      });
+  auto idxMapsAttr = rewriter.getAffineMapArrayAttr(norm_maps);
+  auto kindAttr = mlir::linalg::ElementwiseKindAttr::get(
+      op->getContext(), mlir::linalg::ElementwiseKind::div);
+
+  auto normOp = rewriter.create<mlir::linalg::ElementwiseOp>(
+      loc, mlir::ValueRange{expVal, sumVal},
+      mlir::ValueRange{outBuff.getResult()}, kindAttr, idxMapsAttr);
 
   rewriter.replaceOp(op, normOp.getResult(0));
 
@@ -568,35 +544,32 @@ mlir::LogicalResult OnnxToLinalg_LogSoftmaxOp(mlir::Operation *op,
     return rewriter.notifyMatchFailure(op, opName + " invalid axis");
   }
 
-  // Define parallel iterators once for reuse
+  // parallel iterators
   mlir::SmallVector<mlir::utils::IteratorType> parallel_iterators(
       rank, mlir::utils::IteratorType::parallel);
 
-  // Find the maximum value along the axis for numerical stability
-  mlir::SmallVector<int64_t> max_shape;
-  mlir::SmallVector<mlir::AffineExpr> max_outputMapExprs;
+  // map and shape Definitions
+  mlir::SmallVector<int64_t> reduce_shape;
+  mlir::SmallVector<mlir::AffineExpr> reduce_outputMapExprs;
   for (int i = 0; i < rank; ++i) {
     if (i != axis) {
-      max_shape.push_back(inpType.getShape()[i]);
-      max_outputMapExprs.push_back(rewriter.getAffineDimExpr(i));
+      reduce_shape.push_back(inpType.getShape()[i]);
+      reduce_outputMapExprs.push_back(rewriter.getAffineDimExpr(i));
     }
   }
-  auto maxType = mlir::RankedTensorType::get(max_shape, inpElmType);
+  auto reduceType = mlir::RankedTensorType::get(reduce_shape, inpElmType);
 
-  mlir::SmallVector<mlir::utils::IteratorType> max_reduce_iterators;
-  for (int i = 0; i < rank; ++i) {
-    max_reduce_iterators.push_back((i == axis)
-                                       ? mlir::utils::IteratorType::reduction
-                                       : mlir::utils::IteratorType::parallel);
-  }
+  // affine map for broadcasting
+  mlir::AffineMap reduce_broadcast_map =
+      mlir::AffineMap::get(rank, 0, reduce_outputMapExprs, ctx);
 
-  mlir::SmallVector<mlir::AffineMap> max_maps;
-  max_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  max_maps.push_back(mlir::AffineMap::get(rank, 0, max_outputMapExprs, ctx));
+  // attribute for reduction dims [axis]
+  mlir::SmallVector<int64_t> dims = {axis};
+  auto dimsAttr = rewriter.getDenseI64ArrayAttr(dims);
 
-  // 1. Max Reduction (over axis)
+  // 1. Max Reduction (find row-wise max for stability)
   auto maxTBuff =
-      rewriter.create<mlir::tensor::EmptyOp>(loc, max_shape, inpElmType);
+      rewriter.create<mlir::tensor::EmptyOp>(loc, reduce_shape, inpElmType);
   auto fltType = mlir::cast<mlir::FloatType>(inpElmType);
   mlir::Value negInf = rewriter.create<mlir::arith::ConstantOp>(
       loc, rewriter.getFloatAttr(
@@ -606,89 +579,198 @@ mlir::LogicalResult OnnxToLinalg_LogSoftmaxOp(mlir::Operation *op,
       rewriter.create<mlir::linalg::FillOp>(loc, negInf, maxTBuff.getResult())
           .getResult(0);
 
-  auto maxOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, maxType, mlir::ValueRange{inp}, mlir::ValueRange{maxBuff}, max_maps,
-      max_reduce_iterators,
+  auto maxOp = rewriter.create<mlir::linalg::ReduceOp>(
+      loc, mlir::ValueRange{inp}, mlir::ValueRange{maxBuff}, dimsAttr,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
         mlir::Value result =
             nest.create<mlir::arith::MaximumFOp>(loc, args[0], args[1]);
         nest.create<mlir::linalg::YieldOp>(loc, result);
       });
+  mlir::Value maxVal = maxOp.getResult(0);
 
-  // 2. Subtract the max from the input
-  auto subTBuff = rewriter.create<mlir::tensor::EmptyOp>(
-      loc, inpType.getShape(), inpElmType);
+  // 2. Subtraction (x - max(x)) and Exponentiation (e^(x - max(x)))
+  mlir::SmallVector<mlir::AffineMap> exp_maps;
+  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
+  exp_maps.push_back(reduce_broadcast_map);
+  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
 
-  mlir::SmallVector<mlir::AffineMap> sub_maps;
-  sub_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  sub_maps.push_back(mlir::AffineMap::get(rank, 0, max_outputMapExprs, ctx));
-  sub_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-
-  auto subOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{inp, maxOp.getResult(0)},
-      mlir::ValueRange{subTBuff}, sub_maps, parallel_iterators,
-      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value subX =
-            nest.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
-        nest.create<mlir::linalg::YieldOp>(loc, subX);
-      });
-
-  // 3. Exponentiation (Element-wise e^x)
   auto expTBuff = rewriter.create<mlir::tensor::EmptyOp>(
       loc, inpType.getShape(), inpElmType);
 
-  mlir::SmallVector<mlir::AffineMap> exp_maps;
-  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  exp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-
   auto expOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{subOp.getResult(0)},
-      mlir::ValueRange{expTBuff}, exp_maps, parallel_iterators,
+      loc, inpType, mlir::ValueRange{inp, maxVal},
+      mlir::ValueRange{expTBuff.getResult()}, exp_maps, parallel_iterators,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value expX = nest.create<mlir::math::ExpOp>(loc, args[0]);
+        mlir::Value diff =
+            nest.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
+        mlir::Value expX = nest.create<mlir::math::ExpOp>(loc, diff);
         nest.create<mlir::linalg::YieldOp>(loc, expX);
       });
+  mlir::Value expVal = expOp.getResult(0);
 
-  // 4. Reduction (over axis)
+  // 3. Sum Reduction (row-wise sum of exp values)
   auto sumTBuff =
-      rewriter.create<mlir::tensor::EmptyOp>(loc, max_shape, inpElmType);
+      rewriter.create<mlir::tensor::EmptyOp>(loc, reduce_shape, inpElmType);
   mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(
       loc, rewriter.getFloatAttr(inpElmType, 0.0));
   mlir::Value sumBuff =
       rewriter.create<mlir::linalg::FillOp>(loc, zero, sumTBuff.getResult())
           .getResult(0);
 
-  auto sumOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, maxType, mlir::ValueRange{expOp.getResult(0)},
-      mlir::ValueRange{sumBuff}, max_maps, max_reduce_iterators,
+  auto sumOp = rewriter.create<mlir::linalg::ReduceOp>(
+      loc, mlir::ValueRange{expVal}, mlir::ValueRange{sumBuff}, dimsAttr,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
         mlir::Value result =
             nest.create<mlir::arith::AddFOp>(loc, args[0], args[1]);
         nest.create<mlir::linalg::YieldOp>(loc, result);
       });
+  mlir::Value sumVal = sumOp.getResult(0);
 
-  // 5. Final Calculation
+  // 4. Fused (x - max(x)) - log(sum(e^(x - max(x))))
   auto logSoftmaxTBuff = rewriter.create<mlir::tensor::EmptyOp>(
       loc, inpType.getShape(), inpElmType);
 
   mlir::SmallVector<mlir::AffineMap> final_maps;
   final_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
-  final_maps.push_back(mlir::AffineMap::get(rank, 0, max_outputMapExprs, ctx));
+  final_maps.push_back(reduce_broadcast_map);
+  final_maps.push_back(reduce_broadcast_map);
   final_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
 
   auto logSoftmaxOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, inpType, mlir::ValueRange{subOp.getResult(0), sumOp.getResult(0)},
+      loc, inpType, mlir::ValueRange{inp, maxVal, sumVal},
       mlir::ValueRange{logSoftmaxTBuff.getResult()}, final_maps,
       parallel_iterators,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
-        mlir::Value logSum = nest.create<mlir::math::LogOp>(loc, args[1]);
-
+        auto diffMx = nest.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
+        auto logSum = nest.create<mlir::math::LogOp>(loc, args[2]);
         mlir::Value result =
-            nest.create<mlir::arith::SubFOp>(loc, args[0], logSum);
+            nest.create<mlir::arith::SubFOp>(loc, diffMx, logSum);
         nest.create<mlir::linalg::YieldOp>(loc, result);
       });
 
   rewriter.replaceOp(op, logSoftmaxOp.getResult(0));
+
+  return mlir::success();
+}
+
+mlir::LogicalResult OnnxToLinalg_HardmaxOp(mlir::Operation *op,
+                                           mlir::PatternRewriter &rewriter) {
+  auto ctx = rewriter.getContext();
+  auto opName = op->getName().getStringRef();
+
+  mlir::Value inp = op->getOperand(0);
+  mlir::Value res = op->getResult(0);
+
+  auto inpType = mlir::dyn_cast<mlir::RankedTensorType>(inp.getType());
+  auto resType = mlir::dyn_cast<mlir::RankedTensorType>(res.getType());
+
+  if (!inpType) {
+    return rewriter.notifyMatchFailure(
+        op, opName + " operand must be ranked tensor type");
+  }
+
+  if (!resType) {
+    return rewriter.notifyMatchFailure(
+        op, opName + " result must be a ranked tensor type");
+  }
+
+  auto inpElmType = inpType.getElementType();
+  if (!mlir::isa<mlir::FloatType>(inpElmType)) {
+    return rewriter.notifyMatchFailure(op,
+                                       opName + " requires float element type");
+  }
+
+  mlir::Location loc = op->getLoc();
+
+  auto axisAttr = op->getAttr("axis");
+  if (!axisAttr) {
+    return rewriter.notifyMatchFailure(op,
+                                       opName + " is missing 'axis' attribute");
+  }
+
+  auto axisInt = mlir::dyn_cast_or_null<mlir::IntegerAttr>(axisAttr);
+  if (!axisInt) {
+    return rewriter.notifyMatchFailure(
+        op, opName + " has invalid 'axis' attribute type");
+  }
+
+  auto axis = axisInt.getInt();
+  auto rank = inpType.getRank();
+
+  if (axis < 0 || axis >= rank) {
+    return rewriter.notifyMatchFailure(op, opName + " invalid axis");
+  }
+
+  // map and shape definitions
+  mlir::SmallVector<int64_t> reduce_shape;
+  mlir::SmallVector<mlir::AffineExpr> reduce_outputMapExprs;
+  for (int i = 0; i < rank; ++i) {
+    if (i != axis) {
+      reduce_shape.push_back(inpType.getShape()[i]);
+      reduce_outputMapExprs.push_back(rewriter.getAffineDimExpr(i));
+    }
+  }
+
+  // affine maps for broadcasting
+  auto reduceType = mlir::RankedTensorType::get(reduce_shape, inpElmType);
+  mlir::AffineMap reduce_broadcast_map =
+      mlir::AffineMap::get(rank, 0, reduce_outputMapExprs, ctx);
+
+  // attribute for reduction dims [axis]
+  mlir::SmallVector<int64_t> dims = {axis};
+  auto dimsAttr = rewriter.getDenseI64ArrayAttr(dims);
+
+  // 1. Max reduction (find max value along the axis)
+  auto maxTBuff =
+      rewriter.create<mlir::tensor::EmptyOp>(loc, reduce_shape, inpElmType);
+  auto fltType = mlir::cast<mlir::FloatType>(inpElmType);
+  mlir::Value negInf = rewriter.create<mlir::arith::ConstantOp>(
+      loc, rewriter.getFloatAttr(
+               fltType, llvm::APFloat::getInf(fltType.getFloatSemantics(),
+                                              /*Negative=*/true)));
+  auto maxBuff =
+      rewriter.create<mlir::linalg::FillOp>(loc, negInf, maxTBuff.getResult())
+          .getResult(0);
+
+  auto maxOp = rewriter.create<mlir::linalg::ReduceOp>(
+      loc, mlir::ValueRange{inp}, mlir::ValueRange{maxBuff}, dimsAttr,
+      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
+        mlir::Value result =
+            nest.create<mlir::arith::MaximumFOp>(loc, args[0], args[1]);
+        nest.create<mlir::linalg::YieldOp>(loc, result);
+      });
+  mlir::Value maxVal = maxOp.getResult(0);
+
+  // 2. Comparison and selection (Input == MaxVal) ? 1.0 : 0.0
+  mlir::Value one = rewriter.create<mlir::arith::ConstantOp>(
+      loc, rewriter.getFloatAttr(inpElmType, 1.0));
+  mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(
+      loc, rewriter.getFloatAttr(inpElmType, 0.0));
+
+  mlir::SmallVector<mlir::AffineMap> cmp_maps;
+  cmp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
+  cmp_maps.push_back(reduce_broadcast_map);
+  cmp_maps.push_back(rewriter.getMultiDimIdentityMap(rank));
+
+  auto outTBuff = rewriter.create<mlir::tensor::EmptyOp>(
+      loc, inpType.getShape(), inpElmType);
+
+  mlir::SmallVector<mlir::utils::IteratorType> parallel_iterators(
+      rank, mlir::utils::IteratorType::parallel);
+
+  auto hardmaxOp = rewriter.create<mlir::linalg::GenericOp>(
+      loc, resType, mlir::ValueRange{inp, maxVal},
+      mlir::ValueRange{outTBuff.getResult()}, cmp_maps, parallel_iterators,
+      [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
+        mlir::Value condition = nest.create<mlir::arith::CmpFOp>(
+            loc, mlir::arith::CmpFPredicate::OEQ, args[0], args[1]);
+        mlir::Value result =
+            nest.create<mlir::arith::SelectOp>(loc, condition, one, zero);
+
+        nest.create<mlir::linalg::YieldOp>(loc, result);
+      });
+
+  rewriter.replaceOp(op, hardmaxOp.getResult(0));
 
   return mlir::success();
 }
