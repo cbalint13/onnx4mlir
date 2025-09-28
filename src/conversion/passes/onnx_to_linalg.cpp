@@ -46,24 +46,27 @@
 #include "onnx2mlir/conversion/onnx_passes.hpp"
 #include "onnx2mlir/dialect/onnx/Onnx.hpp"
 
-#include "onnx_to_linalg.hpp"
+#include "onnx_to_linalg.hpp" // NOLINT
 
 namespace onnx2mlir::dialect {
 
-struct ONNXToLINALGLowering : public mlir::RewritePattern {
-  explicit ONNXToLINALGLowering(mlir::MLIRContext *ctx)
-      : mlir::RewritePattern(mlir::Pattern::MatchAnyOpTypeTag(),
-                             /*PatternBenefit=*/true, ctx) {}
+struct ONNXToLINALGLowering : public mlir::ConversionPattern {
+  explicit ONNXToLINALGLowering(mlir::TypeConverter &typeConverter,
+                                mlir::MLIRContext *ctx)
+      : mlir::ConversionPattern(typeConverter,
+                                mlir::Pattern::MatchAnyOpTypeTag(),
+                                /*PatternBenefit=*/true, ctx) {}
+
   mlir::LogicalResult
-  matchAndRewrite(mlir::Operation *op,
-                  mlir::PatternRewriter &rewriter) const override {
+  matchAndRewrite(mlir::Operation *op, mlir::ArrayRef<mlir::Value> operands,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
     // triage by onnx operation names
     llvm::StringRef opName = op->getName().getStringRef();
 
     if (opNameBeginsWith(opName, "Constant")) {
       return OnnxToLinalg_ConstantOp(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Unsqueeze")) {
-#include "onnx_to_linalg/unsqueeze.cpp"
+      //    } else if (opNameBeginsWith(opName, "Unsqueeze")) {
+      // #include "onnx_to_linalg/unsqueeze.cpp"
     } else if (opNameBeginsWith(opName, "Transpose")) {
       return OnnxToLinalg_TransposeOp(op, rewriter);
     } else if (opNameBeginsWith(opName, {"Add", "Sub", "Mul", "Div", "Pow"})) {
@@ -94,10 +97,10 @@ struct ONNXToLINALGLowering : public mlir::RewritePattern {
         "Equal", "Greater", "GreatherOrEqual", "Less", "LessOrEqual",
         })) { // clang-format on
       return OnnxToLinalg_CompBinaryOps(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Where")) {
-#include "onnx_to_linalg/where.cpp"
-    } else if (opNameBeginsWith(opName, "MaxPool")) {
-#include "onnx_to_linalg/maxpool.cpp"
+      //    } else if (opNameBeginsWith(opName, "Where")) {
+      // #include "onnx_to_linalg/where.cpp"
+      //    } else if (opNameBeginsWith(opName, "MaxPool")) {
+      // #include "onnx_to_linalg/maxpool.cpp"
     }
 
     return mlir::success();
@@ -141,7 +144,6 @@ struct LowerONNXToLINALGPass
     // illegal operations (must convert)
     // target.addIllegalOp<onnx::ConstantOp>();
     // target.addIllegalOp<onnx::AbsOp>();
-    // target.addIllegalOp(mlir::OperationName("my_dialect.custom_op", ctx));
 
     // legal operations
     target.addLegalOp<mlir::func::FuncOp>();
@@ -166,41 +168,37 @@ struct LowerONNXToLINALGPass
     // Default type
     typeConverter.addConversion([](mlir::Type type) { return type; });
 
-    // Shaped type
-    typeConverter.addConversion(
-        [&](mlir::ShapedType type) -> std::optional<mlir::Type> {
-          mlir::Type convertedElementType =
-              typeConverter.convertType(type.getElementType());
-          if (!convertedElementType) {
-            return std::nullopt;
-          }
-          if (convertedElementType == type.getElementType()) {
-            return type;
-          }
-          // RankedTensorType with converted element type
-          return mlir::RankedTensorType::get(type.getShape(),
-                                             convertedElementType);
-        });
-
     // Values <- source
     typeConverter.addSourceMaterialization(
-        [&](mlir::OpBuilder builder, mlir::Type resultType,
+        [&](mlir::OpBuilder builder, mlir::Type resType,
             mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
           if (inputs.size() != 1) {
             return nullptr;
           }
-          return createArithCastOp(&builder, loc, inputs[0], resultType);
+
+          mlir::Value inp = inputs[0];
+          mlir::Type inpType = inp.getType();
+          auto inpSType = mlir::dyn_cast<mlir::ShapedType>(inpType);
+          auto resSType = mlir::dyn_cast<mlir::ShapedType>(resType);
+
+          // dynamic source and static target
+          if (inpSType && resSType && !inpSType.hasStaticShape() &&
+              resSType.hasStaticShape()) {
+            // same rank & element type
+            if ((inpSType.getRank() == resSType.getRank()) &&
+                (inpSType.getElementType() == resSType.getElementType())) {
+              return builder.create<mlir::tensor::CastOp>(loc, resType, inp);
+            }
+          }
+
+          return nullptr;
         });
 
     // Values -> target
     typeConverter.addTargetMaterialization(
         [&](mlir::OpBuilder builder, mlir::Type resultType,
-            mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
-          if (inputs.size() != 1) {
-            return nullptr;
-          }
-          return createArithCastOp(&builder, loc, inputs[0], resultType);
-        });
+            mlir::ValueRange inputs,
+            mlir::Location loc) -> mlir::Value { return nullptr; });
 
     /*
      * Rewriter patterns
@@ -213,7 +211,7 @@ struct LowerONNXToLINALGPass
     // add Onnx ConvOp to LINALG ConvOp pattern
     //    patterns.add<ONNXConstantToTOSAConstPattern>(ctx);
     //    patterns.add<ONNXConvToTOSAConvPattern>(ctx);
-    patterns.add<ONNXToLINALGLowering>(ctx);
+    patterns.add<ONNXToLINALGLowering>(typeConverter, ctx);
 
     // apply the partial conversion pattern
     if (mlir::failed(mlir::applyPartialConversion(module, target,
