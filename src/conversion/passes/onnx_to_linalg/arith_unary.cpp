@@ -131,7 +131,7 @@ OnnxToLinalg_ArithUnaryOps(mlir::Operation *op,
             outOp = nest.create<mlir::arith::SelectOp>(loc, cnd, args[0], neg);
           } else {
             auto cA = nest.create<mlir::arith::ConstantOp>(
-                loc, nest.getIntegerAttr(elmType, int(alpha)));
+                loc, nest.getIntegerAttr(elmType, static_cast<int>(alpha)));
             auto c0 = nest.create<mlir::arith::ConstantOp>(
                 loc, nest.getIntegerAttr(elmType, 0));
             auto c1 = nest.create<mlir::arith::ConstantOp>(
@@ -395,8 +395,12 @@ mlir::LogicalResult OnnxToLinalg_SoftmaxOp(mlir::Operation *op,
   auto axis = axisInt.getInt();
   auto rank = inpType.getRank();
 
-  if (axis < 0 || axis >= rank) {
+  if (axis < -rank || axis >= rank) {
     return mlir::emitError(loc, opName + " invalid axis");
+  }
+
+  if (axis < 0) {
+    axis = rank + axis;
   }
 
   // parallel iterators once
@@ -542,8 +546,12 @@ mlir::LogicalResult OnnxToLinalg_LogSoftmaxOp(mlir::Operation *op,
   auto axis = axisInt.getInt();
   auto rank = inpType.getRank();
 
-  if (axis < 0 || axis >= rank) {
+  if (axis < -rank || axis >= rank) {
     return mlir::emitError(loc, opName + " invalid axis");
+  }
+
+  if (axis < 0) {
+    axis = rank + axis;
   }
 
   // parallel iterators
@@ -694,8 +702,12 @@ mlir::LogicalResult OnnxToLinalg_HardmaxOp(mlir::Operation *op,
   auto axis = axisInt.getInt();
   auto rank = inpType.getRank();
 
-  if (axis < 0 || axis >= rank) {
+  if (axis < -rank || axis >= rank) {
     return mlir::emitError(loc, opName + " invalid axis");
+  }
+
+  if (axis < 0) {
+    axis = rank + axis;
   }
 
   // map and shape definitions
