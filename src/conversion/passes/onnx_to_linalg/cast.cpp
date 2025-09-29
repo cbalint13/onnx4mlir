@@ -89,7 +89,12 @@ mlir::Value createArithCastOp(mlir::OpBuilder *builder,
     if (inpElemType.isSignedInteger()) {
       return builder->create<mlir::arith::SIToFPOp>(loc, tgtElemType, inpElem);
     } else {
-      return builder->create<mlir::arith::UIToFPOp>(loc, tgtElemType, inpElem);
+      auto signlessIntType = mlir::IntegerType::get(
+          builder->getContext(), inpElemType.getIntOrFloatBitWidth());
+      auto signlessVal = builder->create<mlir::UnrealizedConversionCastOp>(
+          loc, signlessIntType, inpElem);
+      return builder->create<mlir::arith::UIToFPOp>(loc, tgtElemType,
+                                                    signlessVal.getResult(0));
     }
   }
 
@@ -176,8 +181,8 @@ mlir::LogicalResult OnnxToLinalg_CastOp(mlir::Operation *op,
 
   bool bodyBuildFailed = false;
   auto genericOp = rewriter.create<mlir::linalg::GenericOp>(
-      loc, outType, mlir::ValueRange{inp}, mlir::ValueRange{outBuff},
-      idxMaps, iterators,
+      loc, outType, mlir::ValueRange{inp}, mlir::ValueRange{outBuff}, idxMaps,
+      iterators,
       [&](mlir::OpBuilder nest, mlir::Location loc, mlir::ValueRange args) {
         mlir::Value outOp = createArithCastOp(&nest, loc, args[0], tgtElemType);
         if (!outOp) {

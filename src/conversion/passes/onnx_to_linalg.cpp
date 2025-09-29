@@ -134,6 +134,7 @@ struct LowerONNXToLINALGPass
 
     // legal dialects
     target.addLegalDialect<mlir::arith::ArithDialect>();
+    target.addLegalDialect<mlir::BuiltinDialect>();
     target.addLegalDialect<mlir::func::FuncDialect>();
     target.addLegalDialect<mlir::linalg::LinalgDialect>();
     target.addLegalDialect<mlir::math::MathDialect>();
