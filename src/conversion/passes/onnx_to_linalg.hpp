@@ -75,7 +75,7 @@ mlir::LogicalResult OnnxToLinalg_LogSoftmaxOp(mlir::Operation *op,
 mlir::LogicalResult OnnxToLinalg_SoftmaxOp(mlir::Operation *op,
                                            mlir::PatternRewriter &rewriter);
 
-// onnx.Softmax
+// onnx.Transpose
 mlir::LogicalResult OnnxToLinalg_TransposeOp(mlir::Operation *op,
                                              mlir::PatternRewriter &rewriter);
 
