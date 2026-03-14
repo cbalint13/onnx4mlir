@@ -1,135 +1,118 @@
-      llvm::errs() << "DEBUG: LowerONNXWhereOp pattern invoked for operation: "
-                   << op->getName() << "\n";
-      llvm::errs() << "DEBUG: Full op dump: ";
-      op->dump();
+/******************************************************************+************
+ *
+ * ONNX2MLIR (ONNX dialect mappings for composable optimizations)
+ *
+ * Authors:
+ * Cristian Balint <cristian dot balint at gmail dot com>
+ *
+ * Copyright (c) 2021,2025
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *****************************************************************************/
 
-      mlir::Value condition = op->getOperand(0);
-      mlir::Value x = op->getOperand(1);
-      mlir::Value y = op->getOperand(2);
-      mlir::Location loc = op->getLoc();
-      // mlir::MLIRContext *context = rewriter.getContext(); // REMOVED: Unused
-      // variable
+/*!
+ * \file src/conversion/passes/onnx_to_linalg/where.cpp
+ * \brief ONNX Where operation to Linalg lowering
+ */
 
-      if (!mlir::isa<mlir::ShapedType>(condition.getType()) ||
-          !mlir::isa<mlir::ShapedType>(x.getType()) ||
-          !mlir::isa<mlir::ShapedType>(y.getType())) {
-        return rewriter.notifyMatchFailure(
-            op, "inputs to ONNX Where must be shaped types");
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/Linalg/IR/Linalg.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/Dialect/Transform/IR/TransformOps.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LogicalResult.h>
+
+#include "onnx2mlir/common/onnx.hpp"
+#include "onnx2mlir/dialect/onnx/Onnx.hpp"
+
+namespace onnx2mlir::dialect {
+
+mlir::LogicalResult OnnxToLinalg_WhereOp(mlir::Operation *op,
+                                         mlir::PatternRewriter &rewriter) {
+  auto loc = op->getLoc();
+  auto opName = op->getName().getStringRef();
+
+  if (op->getNumOperands() != 3) {
+    return mlir::emitError(loc, opName + " expected 3 operands");
+  }
+
+  mlir::Value cond = op->getOperand(0);
+  mlir::Value x = op->getOperand(1);
+  mlir::Value y = op->getOperand(2);
+  mlir::Value res = op->getResult(0);
+
+  auto condType = mlir::dyn_cast<mlir::RankedTensorType>(cond.getType());
+  auto xType = mlir::dyn_cast<mlir::RankedTensorType>(x.getType());
+  auto yType = mlir::dyn_cast<mlir::RankedTensorType>(y.getType());
+  auto resType = mlir::dyn_cast<mlir::RankedTensorType>(res.getType());
+
+  if (!condType || !xType || !yType || !resType) {
+    return mlir::emitError(loc, opName + " operand must be ranked tensor type");
+  }
+
+  int64_t resRank = resType.getRank();
+
+  // Create output buffer
+  mlir::Value outBuff = mlir::tensor::EmptyOp::create(
+      rewriter, loc, resType.getShape(), resType.getElementType());
+
+  // Define indexing maps for broadcasting
+  mlir::Builder builder(op->getContext());
+  mlir::AffineExpr zero = builder.getAffineConstantExpr(0);
+
+  auto getIndexingMap = [&](mlir::RankedTensorType type) {
+    llvm::SmallVector<mlir::AffineExpr, 4> exprs;
+    int64_t rank = type.getRank();
+    for (unsigned i = 0; i < resRank; ++i) {
+      int64_t dimIdx = rank - (resRank - i);
+      if (dimIdx >= 0) {
+        if (type.getDimSize(dimIdx) == 1)
+          exprs.push_back(zero);
+        else
+          exprs.push_back(builder.getAffineDimExpr(i));
       }
+    }
+    return mlir::AffineMap::get(resRank, 0, exprs, builder.getContext());
+  };
 
-      mlir::ShapedType conditionShapedType =
-          mlir::cast<mlir::ShapedType>(condition.getType());
-      mlir::ShapedType xShapedType = mlir::cast<mlir::ShapedType>(x.getType());
-      mlir::ShapedType yShapedType = mlir::cast<mlir::ShapedType>(y.getType());
+  llvm::SmallVector<mlir::AffineMap, 4> idxMaps;
+  idxMaps.push_back(getIndexingMap(condType));
+  idxMaps.push_back(getIndexingMap(xType));
+  idxMaps.push_back(getIndexingMap(yType));
+  idxMaps.push_back(rewriter.getMultiDimIdentityMap(resRank));
 
-      // ONNX Where expects condition to be i1 (boolean)
-      if (!conditionShapedType.getElementType().isInteger(1)) {
-        return rewriter.notifyMatchFailure(
-            op, "condition input to ONNX Where must have i1 element type");
-      }
+  // Create linalg.generic
+  llvm::SmallVector<mlir::utils::IteratorType> iterators(
+      resRank, mlir::utils::IteratorType::parallel);
 
-      // X and Y must have the same element type for arith.select
-      if (xShapedType.getElementType() != yShapedType.getElementType()) {
-        return rewriter.notifyMatchFailure(
-            op, "X and Y inputs to ONNX Where must have the same element type");
-      }
+  auto genericOp = mlir::linalg::GenericOp::create(
+      rewriter, loc, resType, mlir::ValueRange{cond, x, y}, // Inputs
+      mlir::ValueRange{outBuff},                            // Output init
+      idxMaps, iterators,
+      [&](mlir::OpBuilder &nest, mlir::Location l, mlir::ValueRange args) {
+        // args[0]: cond (i1), args[1]: x, args[2]: y
+        mlir::Value selected =
+            mlir::arith::SelectOp::create(nest, l, args[0], args[1], args[2]);
+        mlir::linalg::YieldOp::create(nest, l, selected);
+      });
 
-      // The output element type is the same as X (and Y)
-      mlir::Type outputElementType = xShapedType.getElementType();
+  // Set transform tag for downstream optimization
+  genericOp->setAttr("transform.target_tag", rewriter.getStringAttr(opName));
 
-      // The result type of the linalg.generic should match the ONNX op's result
-      // type
-      mlir::ShapedType originalResultShapedType =
-          mlir::cast<mlir::ShapedType>(op->getResult(0).getType());
-      mlir::ArrayRef<int64_t> resultShape = originalResultShapedType.getShape();
-      int64_t outputRank = originalResultShapedType.getRank();
+  rewriter.replaceOp(op, genericOp);
+  return mlir::success();
+}
 
-      mlir::Type resultTensorType =
-          mlir::RankedTensorType::get(resultShape, outputElementType);
-
-      // Create an empty tensor for the output, initialized with the determined
-      // result shape and element type
-      mlir::Value outputBuffer = rewriter.create<mlir::tensor::EmptyOp>(
-          loc, resultShape, outputElementType);
-      llvm::errs() << "DEBUG: LowerONNXWhereOp: Created tensor.empty: ";
-      outputBuffer.getDefiningOp()->dump();
-
-      // Prepare iterators for the linalg.generic op (all parallel for
-      // element-wise operation)
-      llvm::SmallVector<mlir::utils::IteratorType> iterators;
-      for (int i = 0; i < outputRank; ++i) {
-        iterators.push_back(mlir::utils::IteratorType::parallel);
-      }
-
-      // Prepare indexing maps for inputs and output to handle broadcasting
-      mlir::SmallVector<mlir::AffineMap> indexingMaps;
-      // Map for Condition (scalar or identity based on rank)
-      if (conditionShapedType.getRank() == 0) {
-        indexingMaps.push_back(mlir::AffineMap::get(
-            outputRank, /*numSymbols=*/0, {}, rewriter.getContext()));
-      } else {
-        indexingMaps.push_back(rewriter.getMultiDimIdentityMap(
-            conditionShapedType.getRank())); // Use actual rank of condition
-      }
-
-      // Map for X (scalar or identity based on rank)
-      if (xShapedType.getRank() == 0) {
-        indexingMaps.push_back(mlir::AffineMap::get(
-            outputRank, /*numSymbols=*/0, {}, rewriter.getContext()));
-      } else {
-        indexingMaps.push_back(rewriter.getMultiDimIdentityMap(
-            xShapedType.getRank())); // Use actual rank of X
-      }
-
-      // Map for Y (scalar or identity based on rank)
-      if (yShapedType.getRank() == 0) {
-        // indexingMaps.push_back(rewriter.getEmptyAffineMap());
-        // indexingMaps.push_back(rewriter.getMultiDimEmptyAffineMap(outputRank));
-        indexingMaps.push_back(mlir::AffineMap::get(
-            outputRank, /*numSymbols=*/0, {}, rewriter.getContext()));
-      } else {
-        // indexingMaps.push_back(rewriter.getMultiDimIdentityMap(outputRank));
-        indexingMaps.push_back(rewriter.getMultiDimIdentityMap(
-            yShapedType.getRank())); // Use actual rank of Y
-      }
-
-      // Map for Output (always identity)
-      indexingMaps.push_back(rewriter.getMultiDimIdentityMap(outputRank));
-
-      // Create the linalg.generic operation
-      mlir::linalg::GenericOp genericOp =
-          rewriter.create<mlir::linalg::GenericOp>(
-              loc, resultTensorType,
-              mlir::ValueRange{condition, x, y}, // Three input operands
-              mlir::ValueRange{
-                  outputBuffer}, // One output operand (init tensor)
-              indexingMaps, iterators,
-              [&](mlir::OpBuilder &nestedBuilder, mlir::Location nestedLoc,
-                  mlir::ValueRange args) {
-                mlir::Value condElement = args[0];
-                mlir::Value xElement = args[1];
-                mlir::Value yElement = args[2];
-
-                // Use arith.select: result = cond ? x : y
-                mlir::Value selectResult =
-                    nestedBuilder.create<mlir::arith::SelectOp>(
-                        nestedLoc, condElement, xElement, yElement);
-
-                nestedBuilder.create<mlir::linalg::YieldOp>(nestedLoc,
-                                                            selectResult);
-              });
-
-      mlir::Value linalgWhereOpResult = genericOp.getResult(0);
-
-      llvm::errs() << "DEBUG: LowerONNXWhereOp: Created linalg.genericOp: ";
-      genericOp.dump();
-
-      // Replace the original onnx.Where op with the new linalg.generic op
-      rewriter.replaceOp(op, linalgWhereOpResult);
-      llvm::errs() << "DEBUG: LowerONNXWhereOp: Called replaceOp. Now "
-                      "returning success.\n";
-
-      llvm::errs()
-          << "Successfully lowered onnx.WhereOp to linalg.genericOp.\n";
-
-      return mlir::success();
+} // namespace onnx2mlir::dialect

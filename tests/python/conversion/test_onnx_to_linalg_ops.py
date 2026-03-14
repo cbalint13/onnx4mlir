@@ -481,7 +481,7 @@ def test_onnx_compare_binary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
 )
 def test_onnx_gemm_lower(ONNX_OPSET_VERSION):
     """
-    Test ONNX Gemm operator lowering across different opset versions.
+    Test ONNX Gemm operator lowering.
     """
 
     def create_onnx_model(inp_arr0, inp_arr1, inp_bias):
@@ -535,4 +535,80 @@ def test_onnx_gemm_lower(ONNX_OPSET_VERSION):
 
         res_arr = np.zeros_like(onnx_result)
         outputs = runner(llvm_module, "main", [inp_arr0, inp_arr1, inp_bias], [res_arr])
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "ONNX_OPSET_VERSION, dtype, shapes",
+    [
+        (opset, dtype, shapes)
+        for opset in [
+            schema.since_version
+            for schema in get_all_schemas_with_history()
+            if "Where" == schema.name
+        ]
+        for dtype in [TensorProto.FLOAT, TensorProto.INT32]
+        for shapes in [
+            ((4, 4), (4, 4), (4, 4)),  # Standard
+            ((1,), (4, 4), (4, 4)),  # Broadcast Condition
+            ((4, 1), (1, 4), (4, 4)),  # Multi-directional broadcast
+        ]
+    ],
+)
+# pylint: disable=too-many-locals
+def test_onnx_where_lower(ONNX_OPSET_VERSION, dtype, shapes):
+    """
+    Test ONNX Where operator lowering.
+    """
+    cond_shape, x_shape, y_shape = shapes
+
+    np_dtype = np.float32 if dtype == TensorProto.FLOAT else np.int32
+    res_shape = np.broadcast(
+        np.empty(cond_shape), np.empty(x_shape), np.empty(y_shape)
+    ).shape
+
+    def create_onnx_model():
+        input_cond = make_tensor_value_info("condition", TensorProto.BOOL, cond_shape)
+        input_x = make_tensor_value_info("X", dtype, x_shape)
+        input_y = make_tensor_value_info("Y", dtype, y_shape)
+        output_tensor = make_tensor_value_info("output", dtype, res_shape)
+
+        where_node = make_node(
+            "Where",
+            ["condition", "X", "Y"],
+            ["output"],
+        )
+
+        graph = make_graph(
+            nodes=[where_node],
+            name=f"where_opset_{ONNX_OPSET_VERSION}",
+            inputs=[input_cond, input_x, input_y],
+            outputs=[output_tensor],
+        )
+
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
+
+    cond_arr = np.random.choice([True, False], size=cond_shape)
+    x_arr = (np.random.rand(*x_shape) * 10).astype(np_dtype)
+    y_arr = (np.random.rand(*y_shape) * 10).astype(np_dtype)
+
+    onnx_model = create_onnx_model()
+
+    ref = ReferenceEvaluator(onnx_model)
+    onnx_result = ref.run(None, {"condition": cond_arr, "X": x_arr, "Y": y_arr})[0]
+
+    with Context() as ctx, Location.unknown():
+
+        mlir_module = import_from_onnx(onnx_model, ctx)
+        mlir_module.operation.verify()
+
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
+
+        res_arr = np.zeros_like(onnx_result)
+        outputs = runner(llvm_module, "main", [cond_arr, x_arr, y_arr], [res_arr])
+
         np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
