@@ -468,3 +468,72 @@ def test_onnx_compare_binary_lower(ONNX_OP_NAME, ONNX_OPSET_VERSION):
         res_array = np.zeros_like(onnx_result)
         outputs = runner(llvm_module, "main", [inp_array0, inp_array1], [res_array])
         np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "ONNX_OPSET_VERSION",
+    [
+        schema.since_version
+        for schema in get_all_schemas_with_history()
+        # V1 legacy is not available in onnx evaluator
+        if "Gemm" == schema.name and schema.since_version != 1
+    ],
+)
+def test_onnx_gemm_lower(ONNX_OPSET_VERSION):
+    """
+    Test ONNX Gemm operator lowering across different opset versions.
+    """
+
+    def create_onnx_model(inp_arr0, inp_arr1):
+        m, k = inp_arr0.shape
+        _, n = inp_arr1.shape
+
+        input_tensor_0 = make_tensor_value_info("input0", TensorProto.FLOAT, [m, k])
+        input_tensor_1 = make_tensor_value_info("input1", TensorProto.FLOAT, [k, n])
+        input_tensor_2 = make_tensor_value_info("bias0", TensorProto.FLOAT, [m, n])
+        output_tensor = make_tensor_value_info("output", TensorProto.FLOAT, [m, n])
+
+        bias_data = np.zeros((m, n)).astype(np.float32)
+        bias_init = make_tensor(
+            "bias0", TensorProto.FLOAT, [m, n], bias_data.flatten().tolist()
+        )
+
+        arith_node = make_node(
+            "Gemm",
+            ["input0", "input1", "bias0"],
+            ["output"],
+        )
+        graph = make_graph(
+            nodes=[arith_node],
+            name="gemm_graph",
+            inputs=[input_tensor_0, input_tensor_1, input_tensor_2],
+            outputs=[output_tensor],
+            initializer=[bias_init],
+        )
+        opset_imports = [make_opsetid("", ONNX_OPSET_VERSION)]
+        model = make_model(graph, opset_imports=opset_imports)
+        check_model(model)
+        return model
+
+    inp_arr0 = np.random.rand(16, 32).astype(np.float32)
+    inp_arr1 = np.random.rand(32, 16).astype(np.float32)
+    inp_arr2 = np.zeros((16, 16)).astype(np.float32)
+
+    onnx_model = create_onnx_model(inp_arr0, inp_arr1)
+
+    ref = ReferenceEvaluator(onnx_model)
+    onnx_result = ref.run(
+        None, {"input0": inp_arr0, "input1": inp_arr1, "bias0": inp_arr2}
+    )[0]
+
+    with Context() as ctx, Location.unknown():
+
+        mlir_module = import_from_onnx(onnx_model, ctx)
+        mlir_module.operation.verify()
+
+        llvm_module = llvm_lower_pipeline(mlir_module)
+        llvm_module.operation.verify()
+
+        res_arr = np.zeros_like(onnx_result)
+        outputs = runner(llvm_module, "main", [inp_arr0, inp_arr1, inp_arr2], [res_arr])
+        np.testing.assert_allclose(outputs[0], onnx_result, atol=1e-3)

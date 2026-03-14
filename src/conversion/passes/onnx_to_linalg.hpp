@@ -63,6 +63,10 @@ mlir::LogicalResult OnnxToLinalg_CompBinaryOps(mlir::Operation *op,
 mlir::LogicalResult OnnxToLinalg_ConstantOp(mlir::Operation *op,
                                             mlir::PatternRewriter &rewriter);
 
+// onnx.Gemm
+mlir::LogicalResult OnnxToLinalg_GemmOp(mlir::Operation *op,
+                                        mlir::PatternRewriter &rewriter);
+
 // onnx.Hardmax
 mlir::LogicalResult OnnxToLinalg_HardmaxOp(mlir::Operation *op,
                                            mlir::PatternRewriter &rewriter);

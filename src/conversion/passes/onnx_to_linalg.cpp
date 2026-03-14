@@ -63,13 +63,7 @@ struct ONNXToLINALGLowering : public mlir::ConversionPattern {
     // triage by onnx operation names
     llvm::StringRef opName = op->getName().getStringRef();
 
-    if (opNameBeginsWith(opName, "Constant")) {
-      return OnnxToLinalg_ConstantOp(op, rewriter);
-      //    } else if (opNameBeginsWith(opName, "Unsqueeze")) {
-      // #include "onnx_to_linalg/unsqueeze.cpp"
-    } else if (opNameBeginsWith(opName, "Transpose")) {
-      return OnnxToLinalg_TransposeOp(op, rewriter);
-    } else if (opNameBeginsWith(opName, {"Add", "Sub", "Mul", "Div", "Pow"})) {
+    if (opNameBeginsWith(opName, {"Add", "Sub", "Mul", "Div", "Pow"})) {
       return OnnxToLinalg_ArithBinaryOps(op, rewriter);
     } else if (opNameBeginsWith( // clang-format off
         opName,
@@ -84,12 +78,6 @@ struct ONNXToLINALGLowering : public mlir::ConversionPattern {
          "Tanh"
         })) { // clang-format on
       return OnnxToLinalg_ArithUnaryOps(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Hardmax")) {
-      return OnnxToLinalg_HardmaxOp(op, rewriter);
-    } else if (opNameBeginsWith(opName, "Softmax")) {
-      return OnnxToLinalg_SoftmaxOp(op, rewriter);
-    } else if (opNameBeginsWith(opName, "LogSoftmax")) {
-      return OnnxToLinalg_LogSoftmaxOp(op, rewriter);
     } else if (opNameBeginsWith(opName, "Cast")) {
       return OnnxToLinalg_CastOp(op, rewriter);
     } else if (opNameBeginsWith( // clang-format off
@@ -97,10 +85,18 @@ struct ONNXToLINALGLowering : public mlir::ConversionPattern {
         "Equal", "Greater", "GreatherOrEqual", "Less", "LessOrEqual",
         })) { // clang-format on
       return OnnxToLinalg_CompBinaryOps(op, rewriter);
-      //    } else if (opNameBeginsWith(opName, "Where")) {
-      // #include "onnx_to_linalg/where.cpp"
-      //    } else if (opNameBeginsWith(opName, "MaxPool")) {
-      // #include "onnx_to_linalg/maxpool.cpp"
+    } else if (opNameBeginsWith(opName, "Constant")) {
+      return OnnxToLinalg_ConstantOp(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Gemm")) {
+      return OnnxToLinalg_GemmOp(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Hardmax")) {
+      return OnnxToLinalg_HardmaxOp(op, rewriter);
+    } else if (opNameBeginsWith(opName, "LogSoftmax")) {
+      return OnnxToLinalg_LogSoftmaxOp(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Softmax")) {
+      return OnnxToLinalg_SoftmaxOp(op, rewriter);
+    } else if (opNameBeginsWith(opName, "Transpose")) {
+      return OnnxToLinalg_TransposeOp(op, rewriter);
     }
 
     return mlir::success();
@@ -150,14 +146,13 @@ struct LowerONNXToLINALGPass
     target.addLegalOp<mlir::func::FuncOp>();
     target.addLegalOp<mlir::func::ReturnOp>();
     // allow onnx NoneType (postpone rewrite)
-    for (const auto &opName : onnx_op_names) {
-      if (opNameBeginsWith(opName, "Constant")) {
-        target.addDynamicallyLegalOp(
-            mlir::OperationName(opName, ctx), [](mlir::Operation *op) {
-              return mlir::isa<mlir::NoneType>(op->getResult(0).getType());
-            });
-      }
-    }
+    target.addDynamicallyLegalDialect<onnx::OnnxDialect>(
+        [](mlir::Operation *op) {
+          if (opNameBeginsWith(op->getName().getStringRef(), "Constant")) {
+            return mlir::isa<mlir::NoneType>(op->getResult(0).getType());
+          }
+          return false;
+        });
 
     /*
      * Type conversions
@@ -210,16 +205,24 @@ struct LowerONNXToLINALGPass
     mlir::RewritePatternSet patterns(ctx);
 
     // add Onnx ConvOp to LINALG ConvOp pattern
-    //    patterns.add<ONNXConstantToTOSAConstPattern>(ctx);
-    //    patterns.add<ONNXConvToTOSAConvPattern>(ctx);
     patterns.add<ONNXToLINALGLowering>(typeConverter, ctx);
 
     // apply the partial conversion pattern
     if (mlir::failed(mlir::applyPartialConversion(module, target,
                                                   std::move(patterns)))) {
       signalPassFailure();
-      exit(-1);
+      return;
     }
+
+    // clean up NoneType Constant ops if they are unused
+    module.walk<mlir::WalkOrder::PostOrder>([](mlir::Operation *op) {
+      if (opNameBeginsWith(op->getName().getStringRef(), "Constant") &&
+          mlir::isa<mlir::NoneType>(op->getResult(0).getType())) {
+        if (op->use_empty()) {
+          op->erase();
+        }
+      }
+    });
   }
 };
 
